@@ -1,0 +1,8 @@
+{
+  "allowedTools": ["bash", "Read"],
+  "hooks": {
+    "PreToolUse": {
+      "command": "echo pre"
+    }
+  }
+}

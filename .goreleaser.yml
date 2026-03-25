@@ -2,13 +2,6 @@ version: 2
 project_name: bouncerfox
 
 builds:
-  - id: bouncerfox
-    main: ./cmd/bouncerfox
-    binary: bouncerfox
-    goos: [linux, darwin, windows]
-    goarch: [amd64, arm64]
-    ldflags:
-      - -s -w -X main.version={{.Version}}
   - id: bf
     main: ./cmd/bouncerfox
     binary: bf
@@ -19,7 +12,7 @@ builds:
 
 archives:
   - id: default
-    ids: [bouncerfox, bf]
+    ids: [bf]
     formats: [tar.gz]
     format_overrides:
       - goos: windows
@@ -32,7 +25,6 @@ checksum:
 homebrew_casks:
   - name: bouncerfox
     binaries:
-      - bouncerfox
       - bf
     homepage: "https://github.com/bouncerfox/cli"
     description: "Scan AI agent config files for security and quality issues"

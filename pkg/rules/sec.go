@@ -2,11 +2,13 @@ package rules
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"regexp"
 	"strings"
 
 	"github.com/bouncerfox/cli/pkg/document"
+	"github.com/bouncerfox/cli/pkg/entropy"
 	"github.com/bouncerfox/cli/pkg/parser"
 )
 
@@ -494,6 +496,258 @@ func CheckSEC016(doc *document.ConfigDocument) []document.ScanFinding {
 			},
 			Remediation: "Use HTTPS for MCP server URLs.",
 		})
+	}
+	return findings
+}
+
+// sec018Params returns the entropy thresholds and min lengths for SEC_018.
+// Reads from RuleParams["SEC_018"] with safe defaults.
+func sec018Params() (thresholds map[string]map[string]float64, minLengths map[string]int) {
+	p := RuleParams["SEC_018"]
+	getFloat := func(key string, def float64) float64 {
+		if v, ok := p[key]; ok {
+			switch n := v.(type) {
+			case float64:
+				return n
+			case int:
+				return float64(n)
+			}
+		}
+		return def
+	}
+	getInt := func(key string, def int) int {
+		if v, ok := p[key]; ok {
+			switch n := v.(type) {
+			case int:
+				return n
+			case float64:
+				return int(n)
+			}
+		}
+		return def
+	}
+	thresholds = map[string]map[string]float64{
+		"credential": {
+			"hex":    getFloat("hex_threshold_credential", 3.0),
+			"base64": getFloat("base64_threshold_credential", 4.0),
+			"mixed":  getFloat("mixed_threshold_credential", 4.5),
+		},
+		"freetext": {
+			"hex":    getFloat("hex_threshold_freetext", 3.5),
+			"base64": getFloat("base64_threshold_freetext", 4.5),
+			"mixed":  getFloat("mixed_threshold_freetext", 5.0),
+		},
+	}
+	minLengths = map[string]int{
+		"credential": getInt("min_length_credential", 16),
+		"freetext":   getInt("min_length_freetext", 32),
+	}
+	return
+}
+
+// passesEntropyThreshold returns whether the candidate exceeds the threshold,
+// along with its entropy value and charset.
+func passesEntropyThreshold(candidate, context string, thresholds map[string]map[string]float64) (bool, float64, string) {
+	charset := entropy.ClassifyCharset(candidate)
+	ent := entropy.ShannonEntropy(candidate)
+	contextThresholds, ok := thresholds[context]
+	if !ok {
+		contextThresholds = thresholds["freetext"]
+	}
+	threshold, ok := contextThresholds[charset]
+	if !ok {
+		threshold = 5.0
+	}
+	return ent >= threshold, ent, charset
+}
+
+const sec018Remediation = "If this is a secret, remove it and use environment variables or a secret manager. If it is a hash or identifier, it can be safely ignored."
+
+// CheckSEC018 detects high-entropy strings that may be hardcoded secrets.
+// For markdown files it scans content lines (skipping code blocks and SEC_001 lines).
+// For JSON files it walks the parsed document recursively.
+func CheckSEC018(doc *document.ConfigDocument) []document.ScanFinding {
+	switch doc.FileType {
+	case document.FileTypeSkillMD, document.FileTypeClaudeMD, document.FileTypeAgentMD:
+		return checkSEC018Markdown(doc)
+	case document.FileTypeSettingsJSON, document.FileTypeMCPJSON:
+		return checkSEC018JSON(doc)
+	}
+	return nil
+}
+
+func checkSEC018Markdown(doc *document.ConfigDocument) []document.ScanFinding {
+	thresholds, minLengths := sec018Params()
+
+	contentLines := strings.Split(doc.Content, "\n")
+	sec001Lines := getParsedIntBoolMap(doc, "_sec001_lines")
+
+	// code_block_lines is body-relative (1-based); body_start_line tells us
+	// the offset of the body within the full file.
+	codeBlockLines := getParsedIntBoolMap(doc, "code_block_lines")
+	bodyStartLine := 1
+	if bsl, ok := doc.Parsed["body_start_line"].(int); ok {
+		bodyStartLine = bsl
+	}
+
+	var findings []document.ScanFinding
+	for i, line := range contentLines {
+		lineNum := i + 1
+
+		// Translate content line number to body-relative for code block check.
+		bodyLineNum := lineNum - (bodyStartLine - 1)
+		if codeBlockLines[bodyLineNum] {
+			continue
+		}
+		if sec001Lines[lineNum] {
+			continue
+		}
+		if len(line) > maxLineLength {
+			line = line[:maxLineLength]
+		}
+
+		ctx := entropy.DetectContext(line)
+		minLen := minLengths[ctx]
+
+		// Collect candidates: whole line + value portions in credential context.
+		var candidateSegments []string
+		candidateSegments = append(candidateSegments, entropy.ExtractCandidates(line, minLen)...)
+		if ctx == "credential" {
+			for _, sep := range []string{"=", ":"} {
+				if idx := strings.Index(line, sep); idx >= 0 {
+					valuePart := strings.TrimSpace(line[idx+1:])
+					valuePart = strings.Trim(valuePart, `'"`)
+					candidateSegments = append(candidateSegments, entropy.ExtractCandidates(valuePart, minLen)...)
+				}
+			}
+		}
+
+		for _, candidate := range candidateSegments {
+			passes, ent, charset := passesEntropyThreshold(candidate, ctx, thresholds)
+			if passes {
+				findings = append(findings, document.ScanFinding{
+					RuleID:   "SEC_018",
+					Severity: document.SeverityHigh,
+					Message:  "High-entropy string detected — possible hardcoded secret",
+					Evidence: map[string]any{
+						"file":             doc.FilePath,
+						"line":             lineNum,
+						"snippet":          "",
+						"detection_method": "entropy",
+						"context":          ctx,
+						"entropy":          math.Round(ent*100) / 100,
+						"charset":          charset,
+						"candidate_length": len(candidate),
+					},
+					Remediation: sec018Remediation,
+				})
+				break // one finding per line
+			}
+		}
+	}
+	return findings
+}
+
+type jsonEntry struct {
+	key, dotPath, value string
+}
+
+func walkJSON(obj any, path string, depth int) []jsonEntry {
+	if depth > 10 {
+		return nil
+	}
+	var results []jsonEntry
+	switch v := obj.(type) {
+	case map[string]any:
+		for k, child := range v {
+			childPath := k
+			if path != "" {
+				childPath = path + "." + k
+			}
+			results = append(results, walkJSON(child, childPath, depth+1)...)
+		}
+	case []any:
+		for i, item := range v {
+			results = append(results, walkJSON(item, fmt.Sprintf("%s[%d]", path, i), depth+1)...)
+		}
+	case string:
+		key := path
+		if idx := strings.LastIndex(path, "."); idx >= 0 {
+			key = path[idx+1:]
+		}
+		key = arrayIndexRe.ReplaceAllString(key, "")
+		results = append(results, jsonEntry{key, path, v})
+	}
+	return results
+}
+
+// findLineForValue returns the 1-based line number where value first appears in content.
+func findLineForValue(content, value string) int {
+	for i, line := range strings.Split(content, "\n") {
+		if strings.Contains(line, value) {
+			return i + 1
+		}
+	}
+	return 1
+}
+
+var arrayIndexRe = regexp.MustCompile(`\[\d+\]`)
+
+func checkSEC018JSON(doc *document.ConfigDocument) []document.ScanFinding {
+	if hasParseError(doc) {
+		return nil
+	}
+
+	thresholds, minLengths := sec018Params()
+	entries := walkJSON(doc.Parsed, "", 0)
+
+	var findings []document.ScanFinding
+	for _, entry := range entries {
+		// Skip values already matched by any SEC_001 pattern.
+		alreadyMatched := false
+		for _, pat := range secretPatterns {
+			if pat.MatchString(entry.value) {
+				alreadyMatched = true
+				break
+			}
+		}
+		if alreadyMatched {
+			continue
+		}
+
+		// Determine context.
+		ctx := "freetext"
+		if entropy.CredentialKeyRe.MatchString(entry.key) ||
+			strings.Contains(entry.dotPath, ".env.") ||
+			strings.HasSuffix(entry.dotPath, ".env") {
+			ctx = "credential"
+		}
+
+		minLen := minLengths[ctx]
+		candidates := entropy.ExtractCandidates(entry.value, minLen)
+		for _, candidate := range candidates {
+			passes, ent, charset := passesEntropyThreshold(candidate, ctx, thresholds)
+			if passes {
+				lineNum := findLineForValue(doc.Content, candidate)
+				findings = append(findings, document.ScanFinding{
+					RuleID:   "SEC_018",
+					Severity: document.SeverityHigh,
+					Message:  fmt.Sprintf("High-entropy string in %s — possible hardcoded secret", entry.dotPath),
+					Evidence: map[string]any{
+						"file":             doc.FilePath,
+						"line":             lineNum,
+						"snippet":          "",
+						"detection_method": "entropy",
+						"context":          ctx,
+						"entropy":          math.Round(ent*100) / 100,
+						"charset":          charset,
+						"candidate_length": len(candidate),
+					},
+					Remediation: sec018Remediation,
+				})
+				break // one finding per JSON value
+			}
+		}
 	}
 	return findings
 }

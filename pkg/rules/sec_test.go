@@ -657,3 +657,175 @@ func TestSEC016_OnlyMCPJSON(t *testing.T) {
 		t.Errorf("got %d findings, want 0 (not mcp_json)", len(findings))
 	}
 }
+
+// ── SEC_018 ──────────────────────────────────────────────────────────────────
+
+// highEntropyBase64 is a 32-char base64 token with entropy ~4.69 (above freetext threshold 4.5).
+const highEntropyBase64 = "BLP7RVN3hbl6MN05bxucs8wHxSJqUM2w"
+
+// highEntropyCredential is a 20-char base64 token with entropy ~4.22 (above credential threshold 4.0).
+const highEntropyCredential = "F69wQtise2DrMnLh8fMS"
+
+func TestSEC018_HighEntropyFreetext(t *testing.T) {
+	// A standalone high-entropy base64 token of 32+ chars in free text
+	doc := newClaudeMDDoc("The value is " + highEntropyBase64)
+	// Run SEC_001 first to populate the cache
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	if findings[0].RuleID != "SEC_018" {
+		t.Errorf("ruleID = %q, want SEC_018", findings[0].RuleID)
+	}
+	if findings[0].Severity != document.SeverityHigh {
+		t.Errorf("severity = %q, want high", findings[0].Severity)
+	}
+	if findings[0].Evidence["snippet"] != "" {
+		t.Errorf("snippet = %q, want empty (never store secrets)", findings[0].Evidence["snippet"])
+	}
+	if findings[0].Evidence["detection_method"] != "entropy" {
+		t.Errorf("detection_method = %v", findings[0].Evidence["detection_method"])
+	}
+}
+
+func TestSEC018_HighEntropyCredential(t *testing.T) {
+	// A credential-context line needs only 16 chars with lower threshold.
+	// Use "auth=" prefix — matches credential context regex but not SEC_001 patterns.
+	doc := newClaudeMDDoc("auth=" + highEntropyCredential)
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1 (credential context, shorter min_length)", len(findings))
+	}
+	if findings[0].Evidence["context"] != "credential" {
+		t.Errorf("context = %v, want credential", findings[0].Evidence["context"])
+	}
+}
+
+func TestSEC018_SkipsCodeBlock(t *testing.T) {
+	content := "normal\n```\nauth=" + highEntropyCredential + "\n```\n"
+	doc := newClaudeMDDoc(content)
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (code block skipped)", len(findings))
+	}
+}
+
+func TestSEC018_SkipsSEC001Lines(t *testing.T) {
+	// A line already flagged by SEC_001 should be skipped
+	key := "sk_live_" + strings.Repeat("a", 24)
+	doc := newClaudeMDDoc(key + highEntropyBase64)
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (SEC_001 line skipped)", len(findings))
+	}
+}
+
+func TestSEC018_OnePerLine(t *testing.T) {
+	// Two high-entropy tokens on the same line → only one finding
+	line := highEntropyBase64 + " " + highEntropyBase64
+	doc := newClaudeMDDoc(line)
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	if len(findings) != 1 {
+		t.Errorf("got %d findings, want 1 (one per line)", len(findings))
+	}
+}
+
+func TestSEC018_LowEntropyNotFlagged(t *testing.T) {
+	// A long but low-entropy string (e.g., all same chars) should not trigger
+	doc := newClaudeMDDoc("value=" + strings.Repeat("a", 40))
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (low entropy)", len(findings))
+	}
+}
+
+func TestSEC018_EvidenceFields(t *testing.T) {
+	doc := newClaudeMDDoc("The value is " + highEntropyBase64)
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	if len(findings) == 0 {
+		t.Fatal("expected a finding")
+	}
+	ev := findings[0].Evidence
+	if ev["entropy"] == nil {
+		t.Error("entropy missing from evidence")
+	}
+	if ev["charset"] == nil {
+		t.Error("charset missing from evidence")
+	}
+	if ev["candidate_length"] == nil {
+		t.Error("candidate_length missing from evidence")
+	}
+	if ev["context"] == nil {
+		t.Error("context missing from evidence")
+	}
+}
+
+func TestSEC018_JSONCredentialKey(t *testing.T) {
+	// A high-entropy value under a credential key in JSON
+	content := `{"api_key": "` + highEntropyCredential + `"}`
+	doc := newSettingsDoc(content)
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1 (JSON credential key)", len(findings))
+	}
+	if findings[0].Evidence["context"] != "credential" {
+		t.Errorf("context = %v, want credential", findings[0].Evidence["context"])
+	}
+}
+
+func TestSEC018_JSONSkipsSEC001Values(t *testing.T) {
+	// A value matched by a SEC_001 pattern should be skipped
+	key := "sk_live_" + strings.Repeat("a", 24)
+	content := `{"api_key": "` + key + `"}`
+	doc := newSettingsDoc(content)
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	// SEC_001 fires on content lines; SEC_018 JSON path checks value directly against patterns
+	// so the sk_live_ value should be skipped by SEC_018
+	for _, f := range findings {
+		if f.RuleID == "SEC_018" {
+			t.Errorf("SEC_018 should skip value already matched by SEC_001 pattern")
+		}
+	}
+}
+
+func TestSEC018_JSONParseError(t *testing.T) {
+	doc := newSettingsDoc("not valid json{")
+	findings := CheckSEC018(doc)
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (parse error)", len(findings))
+	}
+}
+
+func TestSEC018_SkillMD(t *testing.T) {
+	content := "---\nname: test\n---\nThe value is " + highEntropyBase64
+	doc := newSkillDoc(content)
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1 (skill_md)", len(findings))
+	}
+}
+
+func TestSEC018_OtherFileTypes(t *testing.T) {
+	// Agent MD is a supported file type
+	agentDoc := &document.ConfigDocument{
+		FileType: document.FileTypeAgentMD,
+		FilePath: "agent.md",
+		Content:  "The value is " + highEntropyBase64,
+		Parsed:   map[string]any{},
+	}
+	CheckSEC001(agentDoc)
+	findings := CheckSEC018(agentDoc)
+	if len(findings) != 1 {
+		t.Errorf("got %d findings, want 1 (agent_md)", len(findings))
+	}
+}

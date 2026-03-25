@@ -1,7 +1,9 @@
 package parser
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -123,6 +125,71 @@ func TestParseFrontmatterMD_BinaryContent(t *testing.T) {
 	reason, _ := doc.Parsed["_reason"].(string)
 	if reason != "binary_content" {
 		t.Errorf("_reason = %q, want binary_content", reason)
+	}
+}
+
+func TestParseFrontmatterMD_OversizedContent(t *testing.T) {
+	huge := "---\nname: test\n---\n" + strings.Repeat("A", 600*1024)
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", huge)
+	if doc.Parsed["_parse_error"] != true {
+		t.Error("expected parse error for oversized content")
+	}
+	reason, _ := doc.Parsed["_reason"].(string)
+	if reason != "content_too_large" {
+		t.Errorf("expected reason content_too_large, got %q", reason)
+	}
+}
+
+func TestParseFrontmatterMD_EmptyFrontmatter(t *testing.T) {
+	content := "---\n---\nBody here"
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
+	if doc == nil {
+		t.Fatal("expected non-nil doc for empty frontmatter")
+	}
+	// Empty frontmatter block is parsed as valid (empty map)
+	fm, _ := doc.Parsed["frontmatter"].(map[string]any)
+	if fm == nil {
+		t.Error("expected non-nil frontmatter map")
+	}
+}
+
+func TestParseFrontmatterMD_MalformedYAML(t *testing.T) {
+	content := "---\nname: [unclosed\n---\nBody"
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
+	if doc.Parsed["_parse_error"] != true {
+		t.Error("expected parse error for malformed YAML")
+	}
+}
+
+func TestParseFrontmatterMD_YAMLMergeKey(t *testing.T) {
+	content := "---\nbase: &base\n  key: value\nmerged:\n  <<: *base\n---\nBody"
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
+	if doc.Parsed["_parse_error"] != true {
+		t.Error("expected parse error for YAML merge key (uses anchors)")
+	}
+}
+
+func TestParseFrontmatterMD_DeepNestedYAML(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString("---\n")
+	for i := 0; i < 50; i++ {
+		sb.WriteString(strings.Repeat("  ", i))
+		sb.WriteString(fmt.Sprintf("level%d:\n", i))
+	}
+	sb.WriteString(strings.Repeat("  ", 50))
+	sb.WriteString("value: deep\n")
+	sb.WriteString("---\nBody")
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", sb.String())
+	if doc == nil {
+		t.Fatal("expected non-nil doc")
+	}
+}
+
+func TestParseFrontmatterMD_InvalidUTF8(t *testing.T) {
+	content := "---\nname: test\xff\xfe\n---\nBody"
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
+	if doc == nil {
+		t.Fatal("expected non-nil doc")
 	}
 }
 

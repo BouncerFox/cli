@@ -1,6 +1,9 @@
 package parser
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestIsGovernedFile(t *testing.T) {
 	tests := []struct {
@@ -29,6 +32,46 @@ func TestIsGovernedFile(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsGovernedFile_URLEncodedTraversal(t *testing.T) {
+	// URL-encoded %2e%2e is not actual ".." on the filesystem — the CLI operates
+	// on OS paths, not URLs. The regex may still match CLAUDE.md in the path,
+	// which is correct: the path traversal check only blocks literal ".." segments.
+	// This test documents the behavior.
+	_ = IsGovernedFile("%2e%2e/%2e%2e/CLAUDE.md")
+}
+
+func TestIsGovernedFile_NullByteInPath(t *testing.T) {
+	if IsGovernedFile("CLAUDE.md\x00.txt") {
+		t.Error("null byte in path should not match")
+	}
+}
+
+func TestIsGovernedFile_CaseSensitivity(t *testing.T) {
+	if IsGovernedFile("claude.md") {
+		t.Error("lowercase claude.md should not be governed")
+	}
+}
+
+func TestRouteAndParse_EmptyContent(t *testing.T) {
+	doc := RouteAndParse("CLAUDE.md", "")
+	if doc == nil {
+		t.Fatal("expected non-nil doc for empty content")
+	}
+}
+
+func TestRouteAndParse_PathTraversalInContent(t *testing.T) {
+	doc := RouteAndParse("../../../CLAUDE.md", "content")
+	if doc != nil {
+		t.Error("path traversal should be rejected (nil doc)")
+	}
+}
+
+func TestValidateFilePath_VeryLongPath(t *testing.T) {
+	path := strings.Repeat("a/", 1000) + "CLAUDE.md"
+	// Should not panic
+	_ = validateFilePath(path)
 }
 
 func TestRouteAndParse(t *testing.T) {

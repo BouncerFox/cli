@@ -94,6 +94,56 @@ func TestParseJSONConfig_TooLarge(t *testing.T) {
 	}
 }
 
+func TestParseJSONConfig_EmptyObject(t *testing.T) {
+	doc := ParseJSONConfig("settings_json", "settings.json", "{}")
+	if doc == nil {
+		t.Fatal("expected non-nil doc for empty object")
+	}
+	if doc.Parsed["_parse_error"] == true {
+		t.Error("empty object should not be a parse error")
+	}
+}
+
+func TestParseJSONConfig_DeeplyNestedArrays(t *testing.T) {
+	content := strings.Repeat("[", 15) + strings.Repeat("]", 15)
+	doc := ParseJSONConfig("settings_json", "settings.json", content)
+	if doc.Parsed["_parse_error"] != true {
+		t.Error("expected parse error for deeply nested arrays")
+	}
+}
+
+func TestParseJSONConfig_MixedNesting(t *testing.T) {
+	content := `{"a":[{"b":[{"c":[{"d":[{"e":[{"f":[{"g":[{"h":[{"i":[{"j":[{}]}]}]}]}]}]}]}]}]}]}`
+	doc := ParseJSONConfig("settings_json", "settings.json", content)
+	if doc.Parsed["_parse_error"] != true {
+		t.Error("expected parse error for >10 nesting depth")
+	}
+}
+
+func TestParseJSONConfig_InvalidUTF8(t *testing.T) {
+	content := "{\"key\": \"value\xff\xfe\"}"
+	doc := ParseJSONConfig("settings_json", "settings.json", content)
+	if doc == nil {
+		t.Fatal("expected non-nil doc")
+	}
+}
+
+func TestFindJSONKeyLine_NestedKey(t *testing.T) {
+	content := "{\n  \"outer\": {\n    \"inner\": true\n  }\n}"
+	line := FindJSONKeyLine(content, "inner")
+	if line != 3 {
+		t.Errorf("expected line 3 for 'inner', got %d", line)
+	}
+}
+
+func TestFindJSONKeyLine_MissingKey(t *testing.T) {
+	content := `{"key": "value"}`
+	line := FindJSONKeyLine(content, "missing")
+	if line != 1 {
+		t.Errorf("expected line 1 for missing key, got %d", line)
+	}
+}
+
 func TestFindJSONKeyLine(t *testing.T) {
 	content := "{\n  \"foo\": 1,\n  \"bar\": 2\n}"
 	if got := FindJSONKeyLine(content, "bar"); got != 3 {

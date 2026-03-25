@@ -280,7 +280,7 @@ func doRequest(ctx context.Context, method, url, token string, body any) ([]byte
 	}
 	defer resp.Body.Close()
 
-	data, readErr := io.ReadAll(resp.Body)
+	data, readErr := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("GitHub API %s %s returned %d: %s", method, url, resp.StatusCode, string(data))
 	}

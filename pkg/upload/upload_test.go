@@ -215,7 +215,7 @@ func TestUpload_PostsToCorrectEndpoint(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
-		gotBody, _ = readAll(r.Body)
+		gotBody, _ = io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer srv.Close()
@@ -462,7 +462,7 @@ func doUpload(ctx context.Context, platformURL, apiKey string, findings []docume
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("upload: server returned %d: %s", resp.StatusCode, string(body))
 	}
@@ -488,7 +488,7 @@ func doPullConfig(ctx context.Context, platformURL, apiKey, outputPath string) e
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if err != nil {
 		return fmt.Errorf("config pull: reading response: %w", err)
 	}
@@ -500,11 +500,4 @@ func doPullConfig(ctx context.Context, platformURL, apiKey, outputPath string) e
 		return fmt.Errorf("config pull: writing %s: %w", outputPath, err)
 	}
 	return nil
-}
-
-// readAll drains an io.Reader (used in test handlers).
-func readAll(r io.Reader) ([]byte, error) {
-	var buf bytes.Buffer
-	_, err := buf.ReadFrom(r)
-	return buf.Bytes(), err
 }

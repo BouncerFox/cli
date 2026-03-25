@@ -124,7 +124,7 @@ func Upload(ctx context.Context, opts UploadOptions, w io.Writer) error {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("upload: server returned %d: %s", resp.StatusCode, string(body))
 	}
@@ -156,7 +156,7 @@ func PullConfig(ctx context.Context, platformURL, apiKey, outputPath string) err
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if err != nil {
 		return fmt.Errorf("config pull: reading response: %w", err)
 	}

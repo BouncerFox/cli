@@ -317,6 +317,26 @@ func TestScan_EmptyDocs(t *testing.T) {
 	}
 }
 
+// TestScan_NilDocInSlice verifies the engine does not panic on nil documents.
+func TestScan_NilDocInSlice(t *testing.T) {
+	docs := []*document.ConfigDocument{nil, makeSkill(t, "clean")}
+	defer func() {
+		if r := recover(); r != nil {
+			t.Errorf("Scan panicked on nil doc: %v", r)
+		}
+	}()
+	_ = engine.Scan(docs, engine.ScanOptions{})
+}
+
+// TestScan_EmptyContent verifies the engine handles a document with empty content.
+func TestScan_EmptyContent(t *testing.T) {
+	doc := makeSkill(t, "")
+	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	if result.FilesScanned != 1 {
+		t.Errorf("expected 1 file scanned, got %d", result.FilesScanned)
+	}
+}
+
 // ruleIDs returns a slice of rule IDs for error messages.
 func ruleIDs(findings []document.ScanFinding) []string {
 	ids := make([]string, len(findings))

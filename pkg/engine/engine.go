@@ -58,6 +58,11 @@ func locationKey(filePath string, line any) string {
 // Scan runs all applicable rules from rules.Registry against each document in
 // docs, then applies rule-to-rule suppression, severity overrides, severity
 // floor, deduplication, and caps.
+//
+// WARNING: rules.RuleParams is global mutable state. config.ToScanOptions()
+// mutates it before Scan() is called. This means Scan is NOT safe for
+// concurrent use with different configs. If we ever need concurrent scans
+// with different configs, RuleParams must be passed per-scan.
 func Scan(docs []*document.ConfigDocument, opts ScanOptions) ScanResult {
 	enabledSet := makeStringSet(opts.EnabledRules)
 	disabledSet := makeStringSet(opts.DisabledRules)
@@ -70,8 +75,13 @@ func Scan(docs []*document.ConfigDocument, opts ScanOptions) ScanResult {
 		fp      string
 	}
 	var rawFindings []rawFinding
+	filesScanned := 0
 
 	for _, doc := range docs {
+		if doc == nil {
+			continue
+		}
+		filesScanned++
 		// Track which rule fired on which file+line for suppression.
 		// Key: "file:line", Value: set of rule IDs that fired there.
 		firedAt := make(map[string]map[string]bool)
@@ -164,7 +174,7 @@ func Scan(docs []*document.ConfigDocument, opts ScanOptions) ScanResult {
 
 	return ScanResult{
 		Findings:     allFindings,
-		FilesScanned: len(docs),
+		FilesScanned: filesScanned,
 		RulesRun:     len(rulesRunSet),
 	}
 }

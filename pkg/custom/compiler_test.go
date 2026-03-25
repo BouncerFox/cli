@@ -854,3 +854,37 @@ func mustCompile(t *testing.T, rule map[string]any) custom.CheckFn {
 	}
 	return fn
 }
+
+// ---------------------------------------------------------------------------
+// Hardening tests
+// ---------------------------------------------------------------------------
+
+func TestCompile_NestingDepthLimit(t *testing.T) {
+	inner := map[string]any{
+		"type":  "content_contains",
+		"value": "x",
+	}
+	for i := 0; i < 15; i++ {
+		inner = map[string]any{
+			"type":    "all_of",
+			"matches": []any{inner},
+		}
+	}
+	rule := makeRule("CUST_001", "warn", inner)
+	_, err := custom.Compile(rule)
+	if err == nil {
+		t.Error("expected error for deeply nested match (exceeds depth limit)")
+	}
+}
+
+func TestCompile_RegexSizeLimit(t *testing.T) {
+	hugePattern := strings.Repeat("a", 10_000)
+	rule := makeRule("CUST_001", "warn", map[string]any{
+		"type":    "line_pattern",
+		"pattern": hugePattern,
+	})
+	_, err := custom.Compile(rule)
+	if err == nil {
+		t.Error("expected error for oversized regex pattern")
+	}
+}

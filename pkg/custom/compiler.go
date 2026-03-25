@@ -13,6 +13,20 @@ import (
 // collectionIterationLimit caps the number of items visited in collection_any / collection_none.
 const collectionIterationLimit = 1000
 
+// maxMatchNestingDepth limits recursive combinator nesting (all_of/any_of/not).
+const maxMatchNestingDepth = 10
+
+// maxRegexLength limits user-provided regex patterns to prevent resource abuse.
+const maxRegexLength = 4096
+
+// compileRegex compiles a user-provided regex with a size limit.
+func compileRegex(pattern string) (*regexp.Regexp, error) {
+	if len(pattern) > maxRegexLength {
+		return nil, fmt.Errorf("regex pattern exceeds maximum length (%d chars)", maxRegexLength)
+	}
+	return regexp.Compile(pattern)
+}
+
 // CheckFn is the type of a compiled check function.
 type CheckFn func(*document.ConfigDocument) []document.ScanFinding
 
@@ -47,8 +61,9 @@ func Compile(rule map[string]any) (CheckFn, error) {
 	return compileMatch(matchCfg, ctx)
 }
 
-// ruleCtx carries the rule metadata needed to build findings.
+// ruleCtx carries the rule metadata needed to build findings and compilation state.
 type ruleCtx struct {
+	depth       int // current nesting depth for recursion limits
 	id          string
 	message     string
 	severity    document.FindingSeverity
@@ -80,6 +95,11 @@ func (rc *ruleCtx) finding(doc *document.ConfigDocument, line int, snippet strin
 // The match map either contains a "type" key (new-style single primitive)
 // or multiple keys that are ANDed together (legacy multi-key style).
 func compileMatch(cfg map[string]any, ctx *ruleCtx) (CheckFn, error) {
+	ctx.depth++
+	defer func() { ctx.depth-- }()
+	if ctx.depth > maxMatchNestingDepth {
+		return nil, fmt.Errorf("match nesting exceeds maximum depth (%d)", maxMatchNestingDepth)
+	}
 	// New-style: single "type" key dispatches to a primitive
 	if typeVal, hasType := cfg["type"]; hasType {
 		typeName, _ := typeVal.(string)
@@ -173,7 +193,7 @@ func compilePrimitive(typeName string, cfg map[string]any, ctx *ruleCtx) (CheckF
 
 func compileLinePattern(cfg map[string]any, ctx *ruleCtx) (CheckFn, error) {
 	patStr, _ := cfg["pattern"].(string)
-	re, err := regexp.Compile(patStr)
+	re, err := compileRegex(patStr)
 	if err != nil {
 		return nil, fmt.Errorf("line_pattern: bad pattern %q: %w", patStr, err)
 	}
@@ -213,7 +233,7 @@ func compileLinePatterns(cfg map[string]any, ctx *ruleCtx) (CheckFn, error) {
 		if !ok {
 			// plain string shorthand
 			patStr, _ := item.(string)
-			re, err := regexp.Compile(patStr)
+			re, err := compileRegex(patStr)
 			if err != nil {
 				return nil, fmt.Errorf("line_patterns: bad pattern %q: %w", patStr, err)
 			}
@@ -221,7 +241,7 @@ func compileLinePatterns(cfg map[string]any, ctx *ruleCtx) (CheckFn, error) {
 			continue
 		}
 		patStr, _ := m["pattern"].(string)
-		re, err := regexp.Compile(patStr)
+		re, err := compileRegex(patStr)
 		if err != nil {
 			return nil, fmt.Errorf("line_patterns: bad pattern %q: %w", patStr, err)
 		}
@@ -360,7 +380,7 @@ func compileFieldNotIn(cfg map[string]any, ctx *ruleCtx) (CheckFn, error) {
 func compileFieldMatches(cfg map[string]any, ctx *ruleCtx) (CheckFn, error) {
 	path := strFieldFromMap(cfg, "field", "path")
 	patStr, _ := cfg["pattern"].(string)
-	re, err := regexp.Compile(patStr)
+	re, err := compileRegex(patStr)
 	if err != nil {
 		return nil, fmt.Errorf("field_matches: bad pattern %q: %w", patStr, err)
 	}
@@ -635,7 +655,7 @@ func iterateCollection(coll any) []kvPair {
 
 func precompileConditionRegex(condition map[string]any) *regexp.Regexp {
 	if pat, ok := condition["matches"].(string); ok {
-		re, err := regexp.Compile(pat)
+		re, err := compileRegex(pat)
 		if err == nil {
 			return re
 		}

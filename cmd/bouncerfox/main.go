@@ -35,7 +35,7 @@ var version = "dev"
 
 func main() {
 	rootCmd := &cobra.Command{
-		Use:     "bf",
+		Use:     "bouncerfox",
 		Short:   "BouncerFox — AI agent config scanner",
 		Version: version,
 	}

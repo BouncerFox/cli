@@ -1,4 +1,4 @@
-# BouncerFox CLI (`bf`)
+# BouncerFox CLI
 
 Scan AI agent config files for security, quality, and compliance issues.
 Code never leaves your machine — the scanner runs entirely offline.
@@ -31,19 +31,19 @@ Releases also ship standalone binaries for Linux, macOS, and Windows via
 
 ```bash
 # Scan the current directory (table output)
-bf scan .
+bouncerfox scan .
 
 # JSON output (machine-readable, pipe to jq)
-bf scan . --format json
+bouncerfox scan . --format json
 
 # SARIF output (VS Code / GitHub Code Scanning)
-bf scan . --format sarif
+bouncerfox scan . --format sarif
 
 # List all rules
-bf rules
+bouncerfox rules
 
 # Generate a default .bouncerfox.yml
-bf init
+bouncerfox init
 ```
 
 ## Exit Codes
@@ -68,7 +68,7 @@ bf init
 Example rule IDs: `SEC_001` (hardcoded secret), `SEC_018` (high-entropy string),
 `CFG_001` (unrestricted Bash), `QA_001` (missing description), `PS_004` (hidden HTML comment).
 
-Run `bf rules` for the full list with severities and descriptions.
+Run `bouncerfox rules` for the full list with severities and descriptions.
 
 ## Config (`.bouncerfox.yml`)
 
@@ -169,7 +169,7 @@ For SARIF upload to GitHub Code Scanning, add:
 
 ## CLI Flags
 
-### `bf scan [paths...]`
+### `bouncerfox scan [paths...]`
 
 | Flag | Short | Default | Description |
 |---|---|---|---|
@@ -178,11 +178,11 @@ For SARIF upload to GitHub Code Scanning, add:
 | `--config` | `-c` | `` | Config file path (overrides auto-discovery) |
 | `--max-findings` | | `0` | Cap total findings returned (0 = unlimited) |
 
-### `bf rules`
+### `bouncerfox rules`
 
 Lists all registered rules with ID, severity, category, and description.
 
-### `bf init`
+### `bouncerfox init`
 
 Writes a default `.bouncerfox.yml` to the current directory.
 
@@ -193,10 +193,10 @@ approval flows, enforcement policies, compliance exports, and cross-repo analyti
 
 ```bash
 # Upload findings to the platform (opt-in)
-bf scan . --upload --api-key bf_xxx
+bouncerfox scan . --upload --api-key bf_xxx
 
 # Download org rule config from the platform
-bf scan . --pull-config --api-key bf_xxx
+bouncerfox scan . --pull-config --api-key bf_xxx
 ```
 
 What gets sent with `--upload`: rule IDs, severities, file paths, line numbers,
@@ -207,7 +207,7 @@ Set the API key via environment variable to avoid it appearing in shell history:
 
 ```bash
 export BOUNCERFOX_API_KEY=bf_xxx
-bf scan . --upload
+bouncerfox scan . --upload
 ```
 
 ## Security Notes

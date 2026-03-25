@@ -1,0 +1,18 @@
+name: 'BouncerFox Scan'
+description: 'Scan AI agent config files for security and quality issues'
+inputs:
+  path:
+    description: 'Path to scan'
+    default: '.'
+  format:
+    description: 'Output format (table, json, sarif)'
+    default: 'table'
+  severity:
+    description: 'Minimum severity to report'
+    default: 'info'
+  config:
+    description: 'Config file path'
+    default: ''
+runs:
+  using: 'docker'
+  image: 'Dockerfile'

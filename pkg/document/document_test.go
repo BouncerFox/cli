@@ -18,3 +18,23 @@ func TestSeverityLevel(t *testing.T) {
 		}
 	}
 }
+
+func TestSeverityLevel_Unknown(t *testing.T) {
+	sev := FindingSeverity("bogus")
+	if got := sev.Level(); got != -1 {
+		t.Errorf("unknown severity Level() = %d, want -1", got)
+	}
+}
+
+func TestSeverityLevel_Empty(t *testing.T) {
+	sev := FindingSeverity("")
+	if got := sev.Level(); got != -1 {
+		t.Errorf("empty severity Level() = %d, want -1", got)
+	}
+}
+
+func TestSeverityString(t *testing.T) {
+	if got := SeverityCritical.String(); got != "critical" {
+		t.Errorf("SeverityCritical.String() = %q, want %q", got, "critical")
+	}
+}

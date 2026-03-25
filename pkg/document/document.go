@@ -9,6 +9,10 @@ const (
 	SeverityCritical FindingSeverity = "critical"
 )
 
+func (s FindingSeverity) String() string {
+	return string(s)
+}
+
 func (s FindingSeverity) Level() int {
 	switch s {
 	case SeverityInfo:

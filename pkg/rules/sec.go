@@ -104,27 +104,6 @@ var dangerousEnvVars = map[string]bool{
 	"PIP_EXTRA_INDEX_URL":     true,
 }
 
-func hasParseError(doc *document.ConfigDocument) bool {
-	v, _ := doc.Parsed["_parse_error"].(bool)
-	return v
-}
-
-func truncSnippet(s string, max int) string {
-	if len(s) > max {
-		return s[:max]
-	}
-	return s
-}
-
-func getParsedIntBoolMap(doc *document.ConfigDocument, key string) map[int]bool {
-	if v, ok := doc.Parsed[key]; ok {
-		if m, ok := v.(map[int]bool); ok {
-			return m
-		}
-	}
-	return nil
-}
-
 func getURLAllowlist() []string {
 	if p, ok := RuleParams["SEC_002"]; ok {
 		if al, ok := p["url_allowlist"].([]string); ok {

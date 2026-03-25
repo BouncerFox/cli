@@ -12,6 +12,51 @@ const maxLineLength = 10_000
 
 var htmlCommentRe = regexp.MustCompile(`(?s)<!--(.*?)-->`)
 
+func hasParseError(doc *document.ConfigDocument) bool {
+	v, _ := doc.Parsed["_parse_error"].(bool)
+	return v
+}
+
+func truncSnippet(s string, max int) string {
+	if len(s) > max {
+		return s[:max]
+	}
+	return s
+}
+
+func getParsedIntBoolMap(doc *document.ConfigDocument, key string) map[int]bool {
+	if v, ok := doc.Parsed[key]; ok {
+		if m, ok := v.(map[int]bool); ok {
+			return m
+		}
+	}
+	return nil
+}
+
+func getIntParam(ruleID, key string, defaultVal int) int {
+	if p, ok := RuleParams[ruleID]; ok {
+		switch v := p[key].(type) {
+		case int:
+			return v
+		case float64:
+			return int(v)
+		}
+	}
+	return defaultVal
+}
+
+func getFloatParam(ruleID, key string, defaultVal float64) float64 {
+	if p, ok := RuleParams[ruleID]; ok {
+		switch v := p[key].(type) {
+		case float64:
+			return v
+		case int:
+			return float64(v)
+		}
+	}
+	return defaultVal
+}
+
 // HookCommand represents an extracted hook name + command pair.
 type HookCommand struct {
 	Name    string

@@ -142,3 +142,79 @@ func TestComputeFingerprint_ReturnsSHA256Hex(t *testing.T) {
 		}
 	}
 }
+
+func TestComputeFingerprint_DifferentRulesDontCollide(t *testing.T) {
+	f1 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Message:  "same message",
+		Evidence: map[string]any{"snippet": "secret"},
+	}
+	f2 := document.ScanFinding{
+		RuleID:   "SEC_002",
+		Message:  "same message",
+		Evidence: map[string]any{"snippet": "secret"},
+	}
+	fp1 := fingerprint.ComputeFingerprint(f1)
+	fp2 := fingerprint.ComputeFingerprint(f2)
+	if fp1 == fp2 {
+		t.Error("different rule IDs should produce different fingerprints")
+	}
+}
+
+func TestComputeFingerprint_DifferentSnippetsDontCollide(t *testing.T) {
+	f1 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Evidence: map[string]any{"snippet": "secret_a"},
+	}
+	f2 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Evidence: map[string]any{"snippet": "secret_b"},
+	}
+	fp1 := fingerprint.ComputeFingerprint(f1)
+	fp2 := fingerprint.ComputeFingerprint(f2)
+	if fp1 == fp2 {
+		t.Error("different snippets should produce different fingerprints")
+	}
+}
+
+func TestComputeFingerprint_NilEvidence(t *testing.T) {
+	f := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Evidence: nil,
+	}
+	fp := fingerprint.ComputeFingerprint(f)
+	if len(fp) != 64 {
+		t.Errorf("expected 64-char hex fingerprint, got %d chars", len(fp))
+	}
+}
+
+func TestComputeFingerprint_LargeEvidenceMap(t *testing.T) {
+	ev := make(map[string]any)
+	for i := 0; i < 100; i++ {
+		ev[fmt.Sprintf("key_%d", i)] = fmt.Sprintf("value_%d", i)
+	}
+	f := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Evidence: ev,
+	}
+	fp := fingerprint.ComputeFingerprint(f)
+	if len(fp) != 64 {
+		t.Errorf("expected 64-char hex fingerprint, got %d chars", len(fp))
+	}
+}
+
+func TestComputeFingerprint_Deterministic(t *testing.T) {
+	f := document.ScanFinding{
+		RuleID: "SEC_001",
+		Evidence: map[string]any{
+			"snippet": "abc",
+			"key":     "val",
+			"extra":   "data",
+		},
+	}
+	fp1 := fingerprint.ComputeFingerprint(f)
+	fp2 := fingerprint.ComputeFingerprint(f)
+	if fp1 != fp2 {
+		t.Error("same input must produce same fingerprint")
+	}
+}

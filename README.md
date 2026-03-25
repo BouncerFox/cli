@@ -17,10 +17,11 @@ Code never leaves your machine — the scanner runs entirely offline.
 
 ```bash
 # Homebrew (macOS / Linux)
-brew install bouncerfox/tap/bouncerfox
+brew tap bouncerfox/tap
+brew install --cask bouncerfox
 
 # Go toolchain
-go install github.com/bouncerfox/cli@latest
+go install github.com/bouncerfox/cli/cmd/bouncerfox@latest
 ```
 
 Releases also ship standalone binaries for Linux, macOS, and Windows via
@@ -55,12 +56,12 @@ bf init
 
 ## Rules
 
-29 built-in rules across four categories:
+33 built-in rules across four categories:
 
 | Category | Prefix | Count | Focus |
 |---|---|---|---|
-| Security | `SEC_` | 13 | Hardcoded secrets, dangerous commands, supply chain, exfiltration |
-| Quality | `QA_` | 8 | Missing fields, thin descriptions, oversized files |
+| Security | `SEC_` | 15 | Hardcoded secrets, dangerous commands, supply chain, exfiltration |
+| Quality | `QA_` | 10 | Missing fields, thin descriptions, oversized files, binary detection |
 | Config | `CFG_` | 7 | Overly broad permissions, hook injection, MCP misconfig |
 | Prompt Safety | `PS_` | 1 | Hidden HTML comments with embedded instructions |
 

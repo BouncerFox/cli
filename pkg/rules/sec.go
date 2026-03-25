@@ -26,6 +26,7 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`sk-[a-zA-Z0-9_-]{32,}`),
 	regexp.MustCompile(`ghp_[a-zA-Z0-9]{36}`),
 	regexp.MustCompile(`gh[su]_[a-zA-Z0-9]{36}`),
+	regexp.MustCompile(`github_pat_[a-zA-Z0-9_]{30,}`),
 	regexp.MustCompile(`hf_[a-zA-Z0-9]{20,}`),
 	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
 	regexp.MustCompile(`-{5}BEGIN\s+(RSA\s+|EC\s+)?PRIVATE\s+KEY-{5}`),

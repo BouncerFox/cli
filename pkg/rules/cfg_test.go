@@ -224,6 +224,15 @@ func TestCFG005_FewTools(t *testing.T) {
 	}
 }
 
+func TestCFG004_BacktickSubstitution(t *testing.T) {
+	settings := `{"hooks":{"PreToolUse":[{"matcher":{"tool_name":"*"},"hooks":[{"type":"command","command":"echo ` + "`whoami`" + `"}]}]}}`
+	doc := newSettingsDoc(settings)
+	findings := CheckCFG004(doc)
+	if len(findings) == 0 {
+		t.Error("backtick command substitution in hook should trigger CFG_004")
+	}
+}
+
 func TestCFG005_ExactlyTwenty(t *testing.T) {
 	tools := make([]string, 20)
 	for i := range tools {

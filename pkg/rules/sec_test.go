@@ -3,6 +3,7 @@ package rules
 import (
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/bouncerfox/cli/pkg/document"
 	"github.com/bouncerfox/cli/pkg/parser"
@@ -817,5 +818,73 @@ func TestSEC018_OtherFileTypes(t *testing.T) {
 	findings := CheckSEC018(agentDoc)
 	if len(findings) != 1 {
 		t.Errorf("got %d findings, want 1 (agent_md)", len(findings))
+	}
+}
+
+// ── Adversarial SEC tests ────────────────────────────────────────────────────
+
+func TestSEC001_GitHubFineGrainedPAT(t *testing.T) {
+	doc := newSkillDoc("github_pat_11ABCDEF0_abcdefghijklmnopqrstuvwxyz1234567890abcdefghijklmnopqrstuvwxyz")
+	findings := CheckSEC001(doc)
+	if len(findings) == 0 {
+		t.Error("expected SEC_001 finding for github_pat_ token")
+	}
+}
+
+func TestSEC001_NeverLeaksSecretValue(t *testing.T) {
+	secret := "sk-ant-api03-" + strings.Repeat("X", 60)
+	doc := newSkillDoc("api_key: " + secret)
+	findings := CheckSEC001(doc)
+	for _, f := range findings {
+		snippet, _ := f.Evidence["snippet"].(string)
+		if strings.Contains(snippet, secret) {
+			t.Error("SEC_001 must NEVER include the secret value in evidence")
+		}
+	}
+}
+
+func TestSEC003_AdditionalDestructiveCommands(t *testing.T) {
+	commands := []string{
+		"chmod 777 /etc/passwd",
+		"mkfs.ext4 /dev/sda1",
+		"dd if=/dev/zero of=/dev/sda",
+	}
+	for _, cmd := range commands {
+		doc := newSkillDoc(cmd)
+		findings := CheckSEC003(doc)
+		t.Logf("SEC_003 on %q: %d findings", cmd, len(findings))
+	}
+}
+
+func TestSEC016_PlainHTTP_ZeroAddress(t *testing.T) {
+	doc := newMCPDoc(`{"mcpServers":{"test":{"command":"npx","args":["-y","server"],"env":{"URL":"http://0.0.0.0:3000"}}}}`)
+	findings := CheckSEC016(doc)
+	t.Logf("SEC_016 on http://0.0.0.0: %d findings", len(findings))
+}
+
+func TestSEC004_AllZeroWidthChars(t *testing.T) {
+	chars := []string{
+		"\u200b", // zero-width space
+		"\u200c", // zero-width non-joiner
+		"\u200d", // zero-width joiner
+		"\u2060", // word joiner
+		"\ufeff", // BOM
+	}
+	for _, ch := range chars {
+		doc := newSkillDoc("normal text" + ch + "more text")
+		findings := CheckSEC004(doc)
+		if len(findings) == 0 {
+			r, _ := utf8.DecodeRuneInString(ch)
+			t.Errorf("SEC_004 missed zero-width char U+%04X", r)
+		}
+	}
+}
+
+func TestSEC018_BelowThreshold(t *testing.T) {
+	doc := newSkillDoc("api_key: aaaaaaaabbbbbbbbcccccccc")
+	CheckSEC001(doc)
+	findings := CheckSEC018(doc)
+	if len(findings) > 0 {
+		t.Error("SEC_018 should not fire on low-entropy repetitive string")
 	}
 }

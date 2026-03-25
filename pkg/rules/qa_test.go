@@ -385,3 +385,15 @@ func TestQA008_AppliesToAllFileTypes(t *testing.T) {
 func newAgentDoc(content string) *document.ConfigDocument {
 	return parser.ParseFrontmatterMD(document.FileTypeAgentMD, "agent.md", content)
 }
+
+// ── QA boundary tests ────────────────────────────────────────────────────────
+
+func TestQA003_ExactlyMinLength(t *testing.T) {
+	// Default min is 20 chars — exactly 20 should pass
+	content := "---\nname: test\ndescription: exactly twenty chars\n---\nBody content here."
+	doc := newSkillDoc(content)
+	findings := CheckQA003(doc)
+	if len(findings) > 0 {
+		t.Error("description with exactly min_description_length should not trigger")
+	}
+}

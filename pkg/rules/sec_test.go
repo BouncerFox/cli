@@ -26,16 +26,6 @@ func newMCPDoc(content string) *document.ConfigDocument {
 	return parser.ParseJSONConfig(document.FileTypeMCPJSON, ".mcp.json", content)
 }
 
-func countFindings(findings []document.ScanFinding, ruleID string) int {
-	n := 0
-	for _, f := range findings {
-		if f.RuleID == ruleID {
-			n++
-		}
-	}
-	return n
-}
-
 // ── SEC_001 ──────────────────────────────────────────────────────────────────
 
 func TestSEC001_AnthropicKey(t *testing.T) {

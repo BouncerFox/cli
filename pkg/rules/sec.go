@@ -28,7 +28,7 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`gh[su]_[a-zA-Z0-9]{36}`),
 	regexp.MustCompile(`hf_[a-zA-Z0-9]{20,}`),
 	regexp.MustCompile(`AKIA[0-9A-Z]{16}`),
-	regexp.MustCompile(`-----BEGIN\s+(RSA\s+|EC\s+)?PRIVATE\s+KEY-----`),
+	regexp.MustCompile(`-{5}BEGIN\s+(RSA\s+|EC\s+)?PRIVATE\s+KEY-{5}`),
 	regexp.MustCompile(`(?i)(password|passwd|secret|api[_-]?key)\s*[:=]\s*['"]?\S{8,}`),
 }
 
@@ -77,7 +77,7 @@ var downloadExecPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)eval\s+[^\n]{0,500}\$\(curl`),
 	regexp.MustCompile(`(?i)eval\s+[^\n]{0,500}\$\(wget`),
 	regexp.MustCompile(`(?i)\bsource\s+<\(curl`),
-	regexp.MustCompile(`(?i)python[3]?\s+[^\n]{0,500}-c\s+[^\n]{0,500}urllib`),
+	regexp.MustCompile(`(?i)python3?\s+[^\n]{0,500}-c\s+[^\n]{0,500}urllib`),
 }
 
 var envExfiltrationPatterns = []*regexp.Regexp{
@@ -91,21 +91,21 @@ var envExfiltrationPatterns = []*regexp.Regexp{
 }
 
 var dangerousEnvVars = map[string]bool{
-	"HTTP_PROXY":              true,
-	"HTTPS_PROXY":             true,
-	"ALL_PROXY":               true,
-	"NODE_EXTRA_CA_CERTS":     true,
-	"SSL_CERT_FILE":           true,
-	"PYTHONPATH":              true,
-	"NODE_PATH":               true,
-	"LD_PRELOAD":              true,
-	"DYLD_INSERT_LIBRARIES":   true,
-	"REQUESTS_CA_BUNDLE":      true,
-	"CURL_CA_BUNDLE":          true,
-	"GIT_SSH_COMMAND":         true,
-	"NPM_CONFIG_REGISTRY":     true,
-	"PIP_INDEX_URL":           true,
-	"PIP_EXTRA_INDEX_URL":     true,
+	"HTTP_PROXY":            true,
+	"HTTPS_PROXY":           true,
+	"ALL_PROXY":             true,
+	"NODE_EXTRA_CA_CERTS":   true,
+	"SSL_CERT_FILE":         true,
+	"PYTHONPATH":            true,
+	"NODE_PATH":             true,
+	"LD_PRELOAD":            true,
+	"DYLD_INSERT_LIBRARIES": true,
+	"REQUESTS_CA_BUNDLE":    true,
+	"CURL_CA_BUNDLE":        true,
+	"GIT_SSH_COMMAND":       true,
+	"NPM_CONFIG_REGISTRY":   true,
+	"PIP_INDEX_URL":         true,
+	"PIP_EXTRA_INDEX_URL":   true,
 }
 
 // CheckSEC019 detects YAML anchor/alias usage (potential YAML bomb).
@@ -578,9 +578,9 @@ func sec018Params() (thresholds map[string]map[string]float64, minLengths map[st
 
 // passesEntropyThreshold returns whether the candidate exceeds the threshold,
 // along with its entropy value and charset.
-func passesEntropyThreshold(candidate, context string, thresholds map[string]map[string]float64) (bool, float64, string) {
-	charset := entropy.ClassifyCharset(candidate)
-	ent := entropy.ShannonEntropy(candidate)
+func passesEntropyThreshold(candidate, context string, thresholds map[string]map[string]float64) (passes bool, ent float64, charset string) {
+	charset = entropy.ClassifyCharset(candidate)
+	ent = entropy.ShannonEntropy(candidate)
 	contextThresholds, ok := thresholds[context]
 	if !ok {
 		contextThresholds = thresholds["freetext"]

@@ -24,5 +24,10 @@ jobs:
       - name: Run vet
         run: go vet ./...
 
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
       - name: Build smoke test
         run: go build -o bf ./cmd/bouncerfox

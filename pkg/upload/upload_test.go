@@ -168,7 +168,7 @@ func TestUpload_StripPaths_UsesBasename(t *testing.T) {
 	ev := first["evidence"].(map[string]any)
 
 	got, _ := ev["file"].(string)
-	want := "CLAUDE.md" // filepath.Base("path/to/CLAUDE.md")
+	want := "CLAUDE.md"
 	if got != want {
 		t.Errorf("StripPaths: expected file=%q, got %q", want, got)
 	}
@@ -321,7 +321,7 @@ func TestPullConfig_WarnOnExistingFile(t *testing.T) {
 
 	outPath := filepath.Join(t.TempDir(), ".bouncerfox.yml")
 	// Pre-create the file.
-	if err := os.WriteFile(outPath, []byte("old content"), 0644); err != nil {
+	if err := os.WriteFile(outPath, []byte("old content"), 0o600); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 
@@ -476,7 +476,7 @@ func doPullConfig(ctx context.Context, platformURL, apiKey, outputPath string) e
 	}
 
 	endpoint := platformURL + "/api/v1/config/pull"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("config pull: building request: %w", err)
 	}
@@ -496,7 +496,7 @@ func doPullConfig(ctx context.Context, platformURL, apiKey, outputPath string) e
 		return fmt.Errorf("config pull: server returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	if err := os.WriteFile(outputPath, body, 0644); err != nil {
+	if err := os.WriteFile(outputPath, body, 0o600); err != nil {
 		return fmt.Errorf("config pull: writing %s: %w", outputPath, err)
 	}
 	return nil

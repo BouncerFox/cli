@@ -136,9 +136,9 @@ func PostCheckRun(ctx context.Context, opts CheckRunOptions) error {
 	summary := buildSummary(counts, len(opts.Findings))
 
 	createBody := checkRunCreateRequest{
-		Name:    "BouncerFox",
-		HeadSHA: opts.CommitSHA,
-		Status:  "completed",
+		Name:       "BouncerFox",
+		HeadSHA:    opts.CommitSHA,
+		Status:     "completed",
 		Conclusion: conclusion,
 		Output: checkRunOutput{
 			Title:       "BouncerFox Scan Results",

@@ -529,7 +529,7 @@ func writeTempJSON(t *testing.T, v any) string {
 		t.Fatalf("marshal: %v", err)
 	}
 	f := filepath.Join(t.TempDir(), "event.json")
-	if err := os.WriteFile(f, data, 0600); err != nil {
+	if err := os.WriteFile(f, data, 0o600); err != nil {
 		t.Fatalf("write temp file: %v", err)
 	}
 	return f

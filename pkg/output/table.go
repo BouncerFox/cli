@@ -10,12 +10,12 @@ import (
 
 // ANSI color codes.
 const (
-	ansiReset    = "\033[0m"
-	ansiBold     = "\033[1m"
-	ansiRed      = "\033[31m"
-	ansiRedBold  = "\033[1;31m"
-	ansiYellow   = "\033[33m"
-	ansiCyan     = "\033[36m"
+	ansiReset   = "\033[0m"
+	ansiBold    = "\033[1m"
+	ansiRed     = "\033[31m"
+	ansiRedBold = "\033[1;31m"
+	ansiYellow  = "\033[33m"
+	ansiCyan    = "\033[36m"
 )
 
 func severityColor(s document.FindingSeverity) string {

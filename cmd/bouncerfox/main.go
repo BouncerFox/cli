@@ -102,7 +102,6 @@ func newScanCmd() *cobra.Command {
 			// Collect governed files.
 			var docs []*document.ConfigDocument
 			fileCount := 0
-		rootLoop:
 			for _, root := range paths {
 				// Resolve the scan root to an absolute path for containment checks.
 				absRoot, err := filepath.Abs(root)
@@ -184,12 +183,12 @@ func newScanCmd() *cobra.Command {
 					return nil
 				})
 				if err == errStopWalk {
-					break rootLoop
+					break
 				}
 				if err != nil {
 					if ctx.Err() != nil {
 						fmt.Fprintf(os.Stderr, "warning: scan timed out after %s\n", scanTimeout)
-						break rootLoop
+						break
 					}
 					return fmt.Errorf("walking %s: %w", root, err)
 				}
@@ -346,7 +345,7 @@ func newInitCmd() *cobra.Command {
 			if _, err := os.Stat(configFile); err == nil {
 				return fmt.Errorf("%s already exists; remove it first to regenerate", configFile)
 			}
-			if err := os.WriteFile(configFile, []byte(defaultConfigContent), 0644); err != nil {
+			if err := os.WriteFile(configFile, []byte(defaultConfigContent), 0o600); err != nil {
 				return fmt.Errorf("writing %s: %w", configFile, err)
 			}
 			fmt.Printf("Created %s\n", configFile)
@@ -354,4 +353,3 @@ func newInitCmd() *cobra.Command {
 		},
 	}
 }
-

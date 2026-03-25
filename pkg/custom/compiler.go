@@ -643,7 +643,7 @@ func precompileConditionRegex(condition map[string]any) *regexp.Regexp {
 	return nil
 }
 
-func evalCondition(condition map[string]any, item any, key any, compiledRe *regexp.Regexp) bool {
+func evalCondition(condition map[string]any, item, key any, compiledRe *regexp.Regexp) bool {
 	if eq, ok := condition["equals"]; ok {
 		return fmt.Sprintf("%v", item) == fmt.Sprintf("%v", eq)
 	}

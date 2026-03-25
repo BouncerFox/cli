@@ -30,15 +30,15 @@ const (
 
 // UploadOptions contains all inputs for Upload.
 type UploadOptions struct {
-	PlatformURL  string // e.g., "https://api.bouncerfox.dev"
-	APIKey       string
-	Repo         string // from git remote
-	CommitSHA    string // from git rev-parse HEAD
-	StripPaths   bool   // send filenames only (filepath.Base)
-	Anonymous    bool   // strip all identifying info (repo + file paths)
-	DryRun       bool   // print payload to w, don't send
-	Findings     []document.ScanFinding
-	ScanMeta     ScanMeta
+	PlatformURL string // e.g., "https://api.bouncerfox.dev"
+	APIKey      string
+	Repo        string // from git remote
+	CommitSHA   string // from git rev-parse HEAD
+	StripPaths  bool   // send filenames only (filepath.Base)
+	Anonymous   bool   // strip all identifying info (repo + file paths)
+	DryRun      bool   // print payload to w, don't send
+	Findings    []document.ScanFinding
+	ScanMeta    ScanMeta
 }
 
 // ScanMeta holds scan timing and count metadata.
@@ -144,7 +144,7 @@ func PullConfig(ctx context.Context, platformURL, apiKey, outputPath string) err
 	}
 
 	endpoint := platformURL + "/api/v1/config/pull"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, http.NoBody)
 	if err != nil {
 		return fmt.Errorf("config pull: building request: %w", err)
 	}
@@ -164,7 +164,7 @@ func PullConfig(ctx context.Context, platformURL, apiKey, outputPath string) err
 		return fmt.Errorf("config pull: server returned %d: %s", resp.StatusCode, string(body))
 	}
 
-	if err := os.WriteFile(outputPath, body, 0644); err != nil {
+	if err := os.WriteFile(outputPath, body, 0o600); err != nil {
 		return fmt.Errorf("config pull: writing %s: %w", outputPath, err)
 	}
 

@@ -17,9 +17,9 @@ func hasParseError(doc *document.ConfigDocument) bool {
 	return v
 }
 
-func truncSnippet(s string, max int) string {
-	if len(s) > max {
-		return s[:max]
+func truncSnippet(s string, limit int) string {
+	if len(s) > limit {
+		return s[:limit]
 	}
 	return s
 }

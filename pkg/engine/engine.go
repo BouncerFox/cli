@@ -141,7 +141,7 @@ func Scan(docs []*document.ConfigDocument, opts ScanOptions) ScanResult {
 
 	// Phase 3: Apply severity floor, fingerprint suppression, dedup, cap.
 	seen := make(map[string]bool)
-	var allFindings []document.ScanFinding
+	allFindings := make([]document.ScanFinding, 0, len(rawFindings))
 
 	for _, rf := range rawFindings {
 		if opts.SuppressionMap[rf.fp] {

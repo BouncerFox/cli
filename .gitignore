@@ -1,2 +1,20 @@
 # Binary
-bf
+/bf
+/bouncerfox
+
+# Build artifacts
+dist/
+*.test
+
+# Environment
+.env
+.env.*
+
+# Config with potential secrets
+.bouncerfox.yml
+.bouncerfox.yaml
+
+# IDE
+.idea/
+.vscode/
+*.swp

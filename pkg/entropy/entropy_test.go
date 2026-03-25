@@ -210,4 +210,3 @@ func TestExtractCandidates_MultipleTokens(t *testing.T) {
 
 // helpers for tests
 const randomToken32 = "aB3xK9mZqR2nP7wLaB3xK9mZqR2nP7wL"
-

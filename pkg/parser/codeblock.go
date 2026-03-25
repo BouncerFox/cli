@@ -35,7 +35,7 @@ func ComputeCodeBlockLines(text string) map[int]bool {
 				fenceLen = len(m)
 			}
 		} else {
-			if len(stripped) > 0 && stripped[0] == fenceChar {
+			if stripped != "" && stripped[0] == fenceChar {
 				m := fenceRe.FindString(stripped)
 				if m != "" && len(m) >= fenceLen && strings.TrimRight(stripped, " \t") == m {
 					inFence = false

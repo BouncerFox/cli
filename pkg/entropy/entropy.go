@@ -20,7 +20,7 @@ var (
 // ShannonEntropy computes Shannon entropy in bits per character.
 // Returns 0.0 for empty strings or strings with only one unique character.
 func ShannonEntropy(s string) float64 {
-	if len(s) == 0 {
+	if s == "" {
 		return 0.0
 	}
 	counts := make(map[rune]int)
@@ -66,7 +66,7 @@ func DetectContext(line string) string {
 // URLs, file paths, and Windows path segments are filtered out.
 func ExtractCandidates(line string, minLength int) []string {
 	matches := tokenRe.FindAllStringIndex(line, -1)
-	var candidates []string
+	candidates := make([]string, 0, len(matches))
 	for _, loc := range matches {
 		start, end := loc[0], loc[1]
 		token := line[start:end]

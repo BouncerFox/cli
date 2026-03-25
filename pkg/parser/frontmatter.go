@@ -11,7 +11,7 @@ import (
 var (
 	yamlAnchorRe     = regexp.MustCompile(`(?m)^\s*\w+:\s*&\w+`)
 	yamlAliasRe      = regexp.MustCompile(`(?m)^\s*\w+:\s*\*\w+`)
-	frontmatterKeyRe = regexp.MustCompile(`^([\w][\w-]*):`)
+	frontmatterKeyRe = regexp.MustCompile(`^(\w[\w-]*):`)
 )
 
 const maxContentSize = 512 * 1024 // 512KB
@@ -81,7 +81,7 @@ func findClosingFrontmatter(content string) int {
 	return -1
 }
 
-func computeCodeBlockLinesPair(body, content string) (map[int]bool, map[int]bool) {
+func computeCodeBlockLinesPair(body, content string) (bodyLines, contentLines map[int]bool) {
 	if body == content {
 		cbl := ComputeCodeBlockLines(content)
 		return cbl, cbl

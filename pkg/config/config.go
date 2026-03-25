@@ -105,10 +105,10 @@ func clampSeverity(ruleID string, sv document.FindingSeverity) document.FindingS
 // rawConfig is an intermediate struct used during YAML parsing so we can
 // validate string-typed severity fields before converting them.
 type rawConfig struct {
-	Profile       string                    `yaml:"profile"`
-	SeverityFloor string                    `yaml:"severity_floor"`
-	Rules         map[string]rawRuleConfig  `yaml:"rules"`
-	Ignore        []string                  `yaml:"ignore"`
+	Profile       string                   `yaml:"profile"`
+	SeverityFloor string                   `yaml:"severity_floor"`
+	Rules         map[string]rawRuleConfig `yaml:"rules"`
+	Ignore        []string                 `yaml:"ignore"`
 }
 
 type rawRuleConfig struct {

@@ -13,7 +13,7 @@ import (
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, ".bouncerfox.yml"), []byte(content), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".bouncerfox.yml"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return dir
@@ -53,7 +53,7 @@ func TestLoadConfig_NoFile(t *testing.T) {
 func TestLoadConfig_YAMLExtension(t *testing.T) {
 	dir := t.TempDir()
 	content := "profile: all_rules\n"
-	if err := os.WriteFile(filepath.Join(dir, ".bouncerfox.yaml"), []byte(content), 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, ".bouncerfox.yaml"), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.LoadConfig(dir)

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -14,6 +16,16 @@ import (
 	"github.com/bouncerfox/cli/pkg/parser"
 	"github.com/bouncerfox/cli/pkg/rules"
 )
+
+const (
+	maxFileSize  = 1 * 1024 * 1024 // 1 MB
+	maxFileCount = 500
+	scanTimeout  = 5 * time.Minute
+)
+
+// errStopWalk is a sentinel returned from the Walk callback to stop iteration
+// when the file count limit is reached.
+var errStopWalk = fmt.Errorf("file limit reached")
 
 var version = "dev"
 
@@ -72,14 +84,66 @@ func newScanCmd() *cobra.Command {
 				cfg.SeverityFloor = sv
 			}
 
+			// Wrap the entire scan in a timeout context.
+			ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
+			defer cancel()
+
 			// Collect governed files.
 			var docs []*document.ConfigDocument
+			fileCount := 0
+		rootLoop:
 			for _, root := range paths {
-				err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+				// Resolve the scan root to an absolute path for containment checks.
+				absRoot, err := filepath.Abs(root)
+				if err != nil {
+					return fmt.Errorf("resolving path %s: %w", root, err)
+				}
+
+				err = filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
+					// Respect scan timeout.
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
+
 					if walkErr != nil {
 						return walkErr
 					}
+
+					// Skip .git directories.
 					if info.IsDir() {
+						if info.Name() == ".git" {
+							return filepath.SkipDir
+						}
+						return nil
+					}
+
+					// Enforce max file count.
+					if fileCount >= maxFileCount {
+						fmt.Fprintf(os.Stderr, "warning: file limit (%d) reached; stopping scan\n", maxFileCount)
+						return errStopWalk
+					}
+
+					// Resolve symlinks and verify the real path is within the scan root.
+					realPath, err := filepath.EvalSymlinks(path)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: could not resolve %s: %v\n", path, err)
+						return nil
+					}
+					absReal, err := filepath.Abs(realPath)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: could not get absolute path for %s: %v\n", realPath, err)
+						return nil
+					}
+					// Reject files whose real path escapes the scan root.
+					rel, err := filepath.Rel(absRoot, absReal)
+					if err != nil || rel == ".." || (len(rel) >= 3 && rel[:3] == "../") {
+						fmt.Fprintf(os.Stderr, "warning: skipping %s: resolves outside scan root\n", path)
+						return nil
+					}
+
+					// Enforce max file size.
+					if info.Size() > maxFileSize {
+						fmt.Fprintf(os.Stderr, "warning: skipping %s: file too large (%d bytes)\n", path, info.Size())
 						return nil
 					}
 
@@ -110,9 +174,17 @@ func newScanCmd() *cobra.Command {
 					if doc != nil {
 						docs = append(docs, doc)
 					}
+					fileCount++
 					return nil
 				})
+				if err == errStopWalk {
+					break rootLoop
+				}
 				if err != nil {
+					if ctx.Err() != nil {
+						fmt.Fprintf(os.Stderr, "warning: scan timed out after %s\n", scanTimeout)
+						break rootLoop
+					}
 					return fmt.Errorf("walking %s: %w", root, err)
 				}
 			}

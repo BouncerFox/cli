@@ -208,5 +208,56 @@ func TestExtractCandidates_MultipleTokens(t *testing.T) {
 	}
 }
 
+// ── Edge case tests ─────────────────────────────────────────────────────────
+
+func TestShannonEntropy_AllSameChar(t *testing.T) {
+	got := ShannonEntropy("aaaaaaaaaa")
+	if got != 0.0 {
+		t.Errorf("all same chars should have 0 entropy, got %f", got)
+	}
+}
+
+func TestShannonEntropy_MaxEntropy(t *testing.T) {
+	// ShannonEntropy operates on runes, not raw bytes. When 256 raw bytes
+	// (0x00-0xFF) are converted to a Go string, many high bytes form
+	// invalid UTF-8 sequences that collapse into fewer unique runes,
+	// yielding ~4.5 bits rather than the theoretical 8.0.
+	var input []byte
+	for i := 0; i < 256; i++ {
+		input = append(input, byte(i))
+	}
+	got := ShannonEntropy(string(input))
+	if got < 4.0 {
+		t.Errorf("256 raw bytes should have entropy > 4.0 (rune-based), got %f", got)
+	}
+}
+
+func TestExtractCandidates_VeryLongLine(t *testing.T) {
+	line := strings.Repeat("a", 100_000) + " token=" + strings.Repeat("x", 40)
+	candidates := ExtractCandidates(line, 16)
+	_ = candidates
+}
+
+func TestExtractCandidates_EmptyLine(t *testing.T) {
+	candidates := ExtractCandidates("", 16)
+	if len(candidates) != 0 {
+		t.Errorf("expected 0 candidates from empty line, got %d", len(candidates))
+	}
+}
+
+func TestClassifyCharset_EmptyString(t *testing.T) {
+	got := ClassifyCharset("")
+	if got != "mixed" {
+		t.Errorf("expected 'mixed' for empty string, got %q", got)
+	}
+}
+
+func TestDetectContext_EmptyKey(t *testing.T) {
+	got := DetectContext("")
+	if got != "freetext" {
+		t.Errorf("expected 'freetext' for empty key, got %q", got)
+	}
+}
+
 // helpers for tests
 const randomToken32 = "aB3xK9mZqR2nP7wLaB3xK9mZqR2nP7wL"

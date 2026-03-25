@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"time"
@@ -109,7 +110,7 @@ func newScanCmd() *cobra.Command {
 					return fmt.Errorf("resolving path %s: %w", root, err)
 				}
 
-				err = filepath.Walk(absRoot, func(path string, info os.FileInfo, walkErr error) error {
+				err = filepath.WalkDir(absRoot, func(path string, d fs.DirEntry, walkErr error) error {
 					// Respect scan timeout.
 					if ctx.Err() != nil {
 						return ctx.Err()
@@ -120,14 +121,15 @@ func newScanCmd() *cobra.Command {
 					}
 
 					// Skip .git directories.
-					if info.IsDir() {
-						if info.Name() == ".git" {
+					if d.IsDir() {
+						if d.Name() == ".git" {
 							return filepath.SkipDir
 						}
 						return nil
 					}
 
-					// Enforce max file count.
+					// Enforce max file count (counts all files, not just governed ones).
+					fileCount++
 					if fileCount >= maxFileCount {
 						fmt.Fprintf(os.Stderr, "warning: file limit (%d) reached; stopping scan\n", maxFileCount)
 						return errStopWalk
@@ -152,6 +154,12 @@ func newScanCmd() *cobra.Command {
 					}
 
 					// Enforce max file size.
+					// NOTE: TOCTOU between this check and ReadFile below is accepted for a local CLI tool.
+					info, err := d.Info()
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: could not stat %s: %v\n", path, err)
+						return nil
+					}
 					if info.Size() > maxFileSize {
 						fmt.Fprintf(os.Stderr, "warning: skipping %s: file too large (%d bytes)\n", path, info.Size())
 						return nil
@@ -179,7 +187,6 @@ func newScanCmd() *cobra.Command {
 					if doc != nil {
 						docs = append(docs, doc)
 					}
-					fileCount++
 					return nil
 				})
 				if err == errStopWalk {

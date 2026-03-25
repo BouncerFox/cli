@@ -30,4 +30,4 @@ jobs:
           version: latest
 
       - name: Build smoke test
-        run: go build -o bf ./cmd/bouncerfox
+        run: go build -ldflags="-X main.version=ci-$(git rev-parse --short HEAD)" -o bf ./cmd/bouncerfox

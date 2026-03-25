@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,9 +13,12 @@ import (
 	"github.com/bouncerfox/cli/pkg/config"
 	"github.com/bouncerfox/cli/pkg/document"
 	"github.com/bouncerfox/cli/pkg/engine"
+	gh "github.com/bouncerfox/cli/pkg/github"
 	"github.com/bouncerfox/cli/pkg/output"
 	"github.com/bouncerfox/cli/pkg/parser"
+	"github.com/bouncerfox/cli/pkg/pathutil"
 	"github.com/bouncerfox/cli/pkg/rules"
+	"github.com/bouncerfox/cli/pkg/upload"
 )
 
 const (
@@ -25,7 +29,7 @@ const (
 
 // errStopWalk is a sentinel returned from the Walk callback to stop iteration
 // when the file count limit is reached.
-var errStopWalk = fmt.Errorf("file limit reached")
+var errStopWalk = errors.New("file limit reached")
 
 var version = "dev"
 
@@ -52,6 +56,13 @@ func newScanCmd() *cobra.Command {
 		severityFlag    string
 		configFlag      string
 		maxFindingsFlag int
+		githubComment   bool
+		prNumber        int
+		uploadFlag      bool
+		apiKey          string
+		dryRunUpload    bool
+		stripPaths      bool
+		anonymous       bool
 	)
 
 	cmd := &cobra.Command{
@@ -148,14 +159,9 @@ func newScanCmd() *cobra.Command {
 					}
 
 					// Check ignore patterns from config.
+					relPath, _ := filepath.Rel(absRoot, path)
 					for _, pattern := range cfg.Ignore {
-						matched, err := filepath.Match(pattern, filepath.Base(path))
-						if err == nil && matched {
-							return nil
-						}
-						// Also try matching the full relative path.
-						matched, err = filepath.Match(pattern, path)
-						if err == nil && matched {
+						if pathutil.MatchGlob(pattern, filepath.Base(path)) || pathutil.MatchGlob(pattern, relPath) {
 							return nil
 						}
 					}
@@ -214,6 +220,51 @@ func newScanCmd() *cobra.Command {
 				}
 			}
 
+			// GitHub PR feedback.
+			if githubComment {
+				token := os.Getenv("GITHUB_TOKEN")
+				if token == "" {
+					fmt.Fprintln(os.Stderr, "warning: --github-comment requires GITHUB_TOKEN env var")
+				} else {
+					owner, repo, err := gh.DetectRepoInfo()
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: could not detect repo info: %v\n", err)
+					} else {
+						pr, _ := gh.DetectPRNumber(prNumber)
+						if pr > 0 {
+							if err := gh.PostPRComment(ctx, gh.CommentOptions{
+								Token: token, Owner: owner, Repo: repo,
+								PRNumber: pr, Findings: result.Findings,
+							}); err != nil {
+								fmt.Fprintf(os.Stderr, "warning: PR comment failed: %v\n", err)
+							}
+						}
+					}
+				}
+			}
+
+			// Platform upload.
+			if uploadFlag || dryRunUpload {
+				key := apiKey
+				if key == "" {
+					key = os.Getenv("BOUNCERFOX_API_KEY")
+				}
+				platformURL := os.Getenv("BOUNCERFOX_PLATFORM_URL")
+				if platformURL == "" {
+					platformURL = "https://api.bouncerfox.dev"
+				}
+				if err := upload.Upload(ctx, upload.UploadOptions{
+					PlatformURL: platformURL,
+					APIKey:      key,
+					StripPaths:  stripPaths,
+					Anonymous:   anonymous,
+					DryRun:      dryRunUpload,
+					Findings:    result.Findings,
+				}, os.Stdout); err != nil {
+					fmt.Fprintf(os.Stderr, "error: upload failed: %v\n", err)
+				}
+			}
+
 			// Exit code: 0 = no findings, 1 = findings found.
 			if len(result.Findings) > 0 {
 				os.Exit(1)
@@ -226,6 +277,13 @@ func newScanCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&severityFlag, "severity", "s", "", "severity floor override: critical, high, warn, info")
 	cmd.Flags().StringVarP(&configFlag, "config", "c", "", "config file path (overrides auto-discovery)")
 	cmd.Flags().IntVar(&maxFindingsFlag, "max-findings", 0, "cap total findings (0 = unlimited)")
+	cmd.Flags().BoolVar(&githubComment, "github-comment", false, "post findings as PR comment (requires GITHUB_TOKEN)")
+	cmd.Flags().IntVar(&prNumber, "pr-number", 0, "PR number for GitHub comment (auto-detected in CI)")
+	cmd.Flags().BoolVar(&uploadFlag, "upload", false, "upload findings to BouncerFox platform")
+	cmd.Flags().StringVar(&apiKey, "api-key", "", "API key for platform upload (also via BOUNCERFOX_API_KEY)")
+	cmd.Flags().BoolVar(&dryRunUpload, "dry-run-upload", false, "preview upload payload without sending")
+	cmd.Flags().BoolVar(&stripPaths, "strip-paths", false, "send filenames only in upload (no full paths)")
+	cmd.Flags().BoolVar(&anonymous, "anonymous", false, "strip all identifying info from upload")
 
 	return cmd
 }
@@ -296,3 +354,4 @@ func newInitCmd() *cobra.Command {
 		},
 	}
 }
+

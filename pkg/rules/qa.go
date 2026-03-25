@@ -236,6 +236,20 @@ func CheckQA007(doc *document.ConfigDocument) []document.ScanFinding {
 		return nil
 	}
 
+	if len(name) > 64 {
+		return []document.ScanFinding{{
+			RuleID:   "QA_007",
+			Severity: document.SeverityWarn,
+			Message:  fmt.Sprintf("Skill name exceeds 64 characters (%d chars)", len(name)),
+			Evidence: map[string]any{
+				"file":    doc.FilePath,
+				"line":    GetFrontmatterLine(doc, "name"),
+				"snippet": "name: " + name[:64],
+			},
+			Remediation: "Shorten the skill name to 64 characters or fewer.",
+		}}
+	}
+
 	if validSkillNameRe.MatchString(name) {
 		return nil
 	}
@@ -274,5 +288,41 @@ func CheckQA008(doc *document.ConfigDocument) []document.ScanFinding {
 			"measured_size_kb": math.Round(sizeKB*10) / 10,
 		},
 		Remediation: "Review the file for bloat and consider splitting into smaller files.",
+	}}
+}
+
+// CheckQA009 detects files that exceed the maximum scannable size (1MB).
+func CheckQA009(doc *document.ConfigDocument) []document.ScanFinding {
+	if !hasParseError(doc) {
+		return nil
+	}
+	reason, _ := doc.Parsed["_reason"].(string)
+	if reason != "content_too_large" {
+		return nil
+	}
+	return []document.ScanFinding{{
+		RuleID:      "QA_009",
+		Severity:    document.SeverityHigh,
+		Message:     "File exceeds maximum scannable size",
+		Evidence:    map[string]any{"file": doc.FilePath, "line": 1, "snippet": ""},
+		Remediation: "Reduce file size or split into smaller files.",
+	}}
+}
+
+// CheckQA010 detects binary files that cannot be scanned.
+func CheckQA010(doc *document.ConfigDocument) []document.ScanFinding {
+	if !hasParseError(doc) {
+		return nil
+	}
+	reason, _ := doc.Parsed["_reason"].(string)
+	if reason != "binary_content" {
+		return nil
+	}
+	return []document.ScanFinding{{
+		RuleID:      "QA_010",
+		Severity:    document.SeverityHigh,
+		Message:     "Binary file detected — cannot be scanned",
+		Evidence:    map[string]any{"file": doc.FilePath, "line": 1, "snippet": ""},
+		Remediation: "Replace binary content with text or remove the file from scan scope.",
 	}}
 }

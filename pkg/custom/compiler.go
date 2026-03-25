@@ -766,6 +766,12 @@ func extractCodeBlockLines(doc *document.ConfigDocument) map[int]struct{} {
 		return nil
 	}
 	switch v := raw.(type) {
+	case map[int]bool:
+		result := make(map[int]struct{}, len(v))
+		for k := range v {
+			result[k] = struct{}{}
+		}
+		return result
 	case map[int]struct{}:
 		return v
 	case []any:

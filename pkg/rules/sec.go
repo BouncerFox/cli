@@ -12,6 +12,10 @@ import (
 	"github.com/bouncerfox/cli/pkg/parser"
 )
 
+// sec001LinesKey is the doc.Parsed key where CheckSEC001 caches its matched
+// line numbers so that downstream rules (SEC_006, SEC_018) can skip them.
+const sec001LinesKey = "_sec001_lines"
+
 var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`sk-ant-api03-[a-zA-Z0-9_-]{90,}`),
 	regexp.MustCompile(`(sk|pk)_(live|test)_[a-zA-Z0-9]{24,}`),
@@ -104,6 +108,54 @@ var dangerousEnvVars = map[string]bool{
 	"PIP_EXTRA_INDEX_URL":     true,
 }
 
+// CheckSEC019 detects YAML anchor/alias usage (potential YAML bomb).
+func CheckSEC019(doc *document.ConfigDocument) []document.ScanFinding {
+	if !hasParseError(doc) {
+		return nil
+	}
+	reason, _ := doc.Parsed["_reason"].(string)
+	if reason != "yaml_anchors" {
+		return nil
+	}
+	line := 1
+	if rl, ok := doc.Parsed["_rejection_line"].(int); ok {
+		line = rl
+	}
+	return []document.ScanFinding{{
+		RuleID:   "SEC_019",
+		Severity: document.SeverityHigh,
+		Message:  "YAML anchor/alias detected — potential YAML bomb",
+		Evidence: map[string]any{
+			"file":    doc.FilePath,
+			"line":    line,
+			"snippet": "",
+		},
+		Remediation: "Remove YAML anchors (&) and aliases (*) from frontmatter.",
+	}}
+}
+
+// CheckSEC020 detects deeply nested JSON that may cause resource exhaustion.
+func CheckSEC020(doc *document.ConfigDocument) []document.ScanFinding {
+	if !hasParseError(doc) {
+		return nil
+	}
+	reason, _ := doc.Parsed["_reason"].(string)
+	if reason != "json_nesting_depth" {
+		return nil
+	}
+	return []document.ScanFinding{{
+		RuleID:   "SEC_020",
+		Severity: document.SeverityHigh,
+		Message:  "JSON nesting exceeds maximum depth — possible resource exhaustion",
+		Evidence: map[string]any{
+			"file":    doc.FilePath,
+			"line":    1,
+			"snippet": "",
+		},
+		Remediation: "Reduce JSON nesting depth to 10 levels or fewer.",
+	}}
+}
+
 func getURLAllowlist() []string {
 	if p, ok := RuleParams["SEC_002"]; ok {
 		if al, ok := p["url_allowlist"].([]string); ok {
@@ -145,7 +197,7 @@ func checkHookPatterns(
 
 // CheckSEC001 detects hardcoded secret-like tokens.
 // Iterates ALL lines (including code blocks). Evidence snippet is always "".
-// Caches matched line numbers in doc.Parsed["_sec001_lines"].
+// Caches matched line numbers in doc.Parsed[sec001LinesKey].
 func CheckSEC001(doc *document.ConfigDocument) []document.ScanFinding {
 	lines := strings.Split(doc.Content, "\n")
 	sec001Lines := make(map[int]bool)
@@ -175,7 +227,7 @@ func CheckSEC001(doc *document.ConfigDocument) []document.ScanFinding {
 		}
 	}
 
-	doc.Parsed["_sec001_lines"] = sec001Lines
+	doc.Parsed[sec001LinesKey] = sec001Lines
 	return findings
 }
 
@@ -264,7 +316,7 @@ func CheckSEC004(doc *document.ConfigDocument) []document.ScanFinding {
 func CheckSEC006(doc *document.ConfigDocument) []document.ScanFinding {
 	lines := strings.Split(doc.Content, "\n")
 	cbl := getParsedIntBoolMap(doc, "content_code_block_lines")
-	sec001Lines := getParsedIntBoolMap(doc, "_sec001_lines")
+	sec001Lines := getParsedIntBoolMap(doc, sec001LinesKey)
 	var findings []document.ScanFinding
 
 	for i, line := range lines {
@@ -559,7 +611,7 @@ func checkSEC018Markdown(doc *document.ConfigDocument) []document.ScanFinding {
 	thresholds, minLengths := sec018Params()
 
 	contentLines := strings.Split(doc.Content, "\n")
-	sec001Lines := getParsedIntBoolMap(doc, "_sec001_lines")
+	sec001Lines := getParsedIntBoolMap(doc, sec001LinesKey)
 
 	// code_block_lines is body-relative (1-based); body_start_line tells us
 	// the offset of the body within the full file.

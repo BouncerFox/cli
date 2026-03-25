@@ -14,6 +14,12 @@ import (
 	"github.com/bouncerfox/cli/pkg/rules"
 )
 
+// Profile constants for the scanner configuration.
+const (
+	ProfileRecommended = "recommended"
+	ProfileAllRules    = "all_rules"
+)
+
 // RuleConfig holds per-rule overrides from the config file.
 type RuleConfig struct {
 	// Enabled controls whether the rule runs. nil means use the default (enabled).
@@ -45,7 +51,7 @@ type Config struct {
 // Profile is "recommended" and all other fields are zero-value.
 func DefaultConfig() *Config {
 	return &Config{
-		Profile: "recommended",
+		Profile: ProfileRecommended,
 		Rules:   make(map[string]RuleConfig),
 	}
 }
@@ -136,7 +142,7 @@ func LoadConfig(dir string) (*Config, error) {
 	}
 
 	if cfg.Profile == "" {
-		cfg.Profile = "recommended"
+		cfg.Profile = ProfileRecommended
 	}
 
 	// Parse and validate severity_floor.
@@ -194,13 +200,47 @@ func readConfigFile(dir string) ([]byte, error) {
 
 // ToScanOptions translates the Config into engine.ScanOptions and applies
 // per-rule param overrides to rules.RuleParams.
+// recommendedDisabled is the set of rules disabled in the "recommended" profile.
+var recommendedDisabled = map[string]bool{
+	"QA_001":  true,
+	"QA_003":  true,
+	"QA_008":  true,
+	"SEC_006": true,
+	"CFG_007": true,
+	"CFG_009": true,
+}
+
 func (c *Config) ToScanOptions() engine.ScanOptions {
 	var disabled []string
+	severityOverrides := make(map[string]document.FindingSeverity)
+
+	// Apply profile-based disabling.
+	if c.Profile == ProfileRecommended {
+		for id := range recommendedDisabled {
+			disabled = append(disabled, id)
+		}
+	}
 
 	for id, rc := range c.Rules {
-		// Collect disabled rules.
 		if rc.Enabled != nil && !*rc.Enabled {
 			disabled = append(disabled, id)
+		}
+		// Explicit enabled: true overrides profile disabling.
+		if rc.Enabled != nil && *rc.Enabled {
+			for i, d := range disabled {
+				if d == id {
+					disabled = append(disabled[:i], disabled[i+1:]...)
+					break
+				}
+			}
+		}
+
+		// Apply severity override with floor enforcement.
+		if rc.Severity != nil {
+			sev := *rc.Severity
+			// Enforce severity floor: CRITICAL rules cannot go below HIGH.
+			sev = clampSeverity(id, sev)
+			severityOverrides[id] = sev
 		}
 
 		// Apply per-rule param overrides to the global RuleParams map.
@@ -215,8 +255,9 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 	}
 
 	return engine.ScanOptions{
-		DisabledRules: disabled,
-		SeverityFloor: c.SeverityFloor,
+		DisabledRules:     disabled,
+		SeverityFloor:     c.SeverityFloor,
+		SeverityOverrides: severityOverrides,
 	}
 }
 

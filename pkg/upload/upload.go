@@ -11,9 +11,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/bouncerfox/cli/pkg/document"
 )
+
+// httpClient is used for all platform API requests (with a 30-second timeout).
+var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 // Version is the payload schema version.
 const Version = "1.0"
@@ -114,7 +118,7 @@ func Upload(ctx context.Context, opts UploadOptions, w io.Writer) error {
 	req.Header.Set("Authorization", "Bearer "+opts.APIKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("upload: executing request: %w", err)
 	}
@@ -146,7 +150,7 @@ func PullConfig(ctx context.Context, platformURL, apiKey, outputPath string) err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("config pull: executing request: %w", err)
 	}
@@ -203,29 +207,16 @@ func transformEvidence(ev map[string]any, stripPaths, anonymous bool) map[string
 	if ev == nil {
 		return nil
 	}
-	if !stripPaths && !anonymous {
-		// Return a shallow copy to avoid mutating the original.
-		cp := make(map[string]any, len(ev))
-		for k, v := range ev {
-			cp[k] = v
-		}
-		return cp
-	}
-
 	cp := make(map[string]any, len(ev))
 	for k, v := range ev {
 		cp[k] = v
 	}
-
 	if anonymous {
-		// Strip the file path entirely.
 		delete(cp, "file")
 	} else if stripPaths {
-		// Keep only the base filename.
 		if file, ok := cp["file"].(string); ok && file != "" {
 			cp["file"] = filepath.Base(file)
 		}
 	}
-
 	return cp
 }

@@ -10,12 +10,16 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/bouncerfox/cli/pkg/document"
 )
 
 // baseURL is the GitHub API base URL. It can be overridden in tests.
 var baseURL = "https://api.github.com"
+
+// httpClient is used for all GitHub API requests (with a 30-second timeout).
+var httpClient = &http.Client{Timeout: 30 * time.Second}
 
 // commentMarker is the HTML comment embedded in PR comments so we can find and
 // update our own comment on subsequent scans.
@@ -270,7 +274,7 @@ func doRequest(ctx context.Context, method, url, token string, body any) ([]byte
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("executing request: %w", err)
 	}
@@ -406,33 +410,26 @@ func escapeMarkdown(s string) string {
 // findExistingComment searches for a PR comment containing commentMarker and
 // returns its ID, or 0 if not found.
 func findExistingComment(ctx context.Context, opts CommentOptions) (int64, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/issues/%d/comments?per_page=100",
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/issues/%d/comments?per_page=100",
 		baseURL, opts.Owner, opts.Repo, opts.PRNumber)
 
-	for url != "" {
-		data, err := doRequest(ctx, http.MethodGet, url, opts.Token, nil)
-		if err != nil {
-			return 0, err
-		}
+	data, err := doRequest(ctx, http.MethodGet, reqURL, opts.Token, nil)
+	if err != nil {
+		return 0, err
+	}
 
-		var comments []struct {
-			ID   int64  `json:"id"`
-			Body string `json:"body"`
-		}
-		if err := json.Unmarshal(data, &comments); err != nil {
-			return 0, fmt.Errorf("parsing comments response: %w", err)
-		}
+	var comments []struct {
+		ID   int64  `json:"id"`
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal(data, &comments); err != nil {
+		return 0, fmt.Errorf("parsing comments response: %w", err)
+	}
 
-		for _, c := range comments {
-			if strings.Contains(c.Body, commentMarker) {
-				return c.ID, nil
-			}
+	for _, c := range comments {
+		if strings.Contains(c.Body, commentMarker) {
+			return c.ID, nil
 		}
-
-		// Simple pagination: we request up to 100 comments per page; for very
-		// active PRs we'd need Link header parsing. For most practical cases
-		// 100 comments is sufficient.
-		break
 	}
 
 	return 0, nil

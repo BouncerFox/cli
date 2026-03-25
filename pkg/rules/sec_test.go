@@ -115,9 +115,9 @@ func TestSEC001_CachesLines(t *testing.T) {
 	key := "sk_live_" + strings.Repeat("a", 24)
 	doc := newClaudeMDDoc("line1\n" + key + "\nline3\n")
 	CheckSEC001(doc)
-	cached, ok := doc.Parsed["_sec001_lines"].(map[int]bool)
+	cached, ok := doc.Parsed[sec001LinesKey].(map[int]bool)
 	if !ok {
-		t.Fatal("_sec001_lines not cached as map[int]bool")
+		t.Fatal("sec001LinesKey not cached as map[int]bool")
 	}
 	if !cached[2] {
 		t.Errorf("expected line 2 in cached sec001_lines, got %v", cached)

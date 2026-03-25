@@ -3,6 +3,8 @@
 package engine
 
 import (
+	"fmt"
+
 	"github.com/bouncerfox/cli/pkg/document"
 	"github.com/bouncerfox/cli/pkg/fingerprint"
 	"github.com/bouncerfox/cli/pkg/rules"
@@ -21,12 +23,24 @@ type ScanOptions struct {
 	// value. Zero value (empty string) means no floor.
 	SeverityFloor document.FindingSeverity
 
+	// SeverityOverrides remaps per-rule severity after check functions run.
+	SeverityOverrides map[string]document.FindingSeverity
+
 	// MaxFindings caps the total number of findings returned. 0 = unlimited.
 	MaxFindings int
 
 	// SuppressionMap is a set of fingerprints to skip. A finding whose
 	// fingerprint is in this map is not included in the result.
 	SuppressionMap map[string]bool
+}
+
+// ruleSuppressionMap defines which rules suppress other rules on the same
+// file+line. When a suppressor rule fires on a line, suppressee rules'
+// findings on that same line are dropped.
+var ruleSuppressionMap = map[string][]string{
+	"SEC_001": {"SEC_018", "SEC_006"},
+	"SEC_018": {"SEC_006"},
+	"SEC_007": {"SEC_006"},
 }
 
 // ScanResult holds the output of a Scan call.
@@ -36,33 +50,46 @@ type ScanResult struct {
 	RulesRun     int
 }
 
+// locationKey builds a key for rule-to-rule suppression lookups.
+func locationKey(filePath string, line any) string {
+	return filePath + ":" + fmt.Sprint(line)
+}
+
 // Scan runs all applicable rules from rules.Registry against each document in
-// docs, then applies suppression, severity filtering, deduplication, and caps.
+// docs, then applies rule-to-rule suppression, severity overrides, severity
+// floor, deduplication, and caps.
 func Scan(docs []*document.ConfigDocument, opts ScanOptions) ScanResult {
 	enabledSet := makeStringSet(opts.EnabledRules)
 	disabledSet := makeStringSet(opts.DisabledRules)
 
-	seen := make(map[string]bool)
-	var allFindings []document.ScanFinding
 	rulesRunSet := make(map[string]bool)
 
+	// Phase 1: Run all rules, collect raw findings per document.
+	type rawFinding struct {
+		finding document.ScanFinding
+		fp      string
+	}
+	var rawFindings []rawFinding
+
 	for _, doc := range docs {
+		// Track which rule fired on which file+line for suppression.
+		// Key: "file:line", Value: set of rule IDs that fired there.
+		firedAt := make(map[string]map[string]bool)
+
+		var docFindings []rawFinding
+
 		for i := range rules.Registry {
 			rule := &rules.Registry[i]
 
-			// Skip rules not applicable to this file type.
 			if !fileTypeApplies(rule.DefaultFileTypes, doc.FileType) {
 				continue
 			}
-
-			// Apply enabled/disabled filters.
 			if len(enabledSet) > 0 && !enabledSet[rule.ID] {
 				continue
 			}
 			if disabledSet[rule.ID] {
 				continue
 			}
-
 			if rule.Check == nil {
 				continue
 			}
@@ -71,36 +98,67 @@ func Scan(docs []*document.ConfigDocument, opts ScanOptions) ScanResult {
 			findings := rule.Check(doc)
 
 			for _, f := range findings {
-				// Compute fingerprint for suppression and dedup.
+				// Apply severity override if configured.
+				if sev, ok := opts.SeverityOverrides[f.RuleID]; ok {
+					f.Severity = sev
+				}
+
 				fp := fingerprint.ComputeFingerprint(f)
 
-				// Skip suppressed fingerprints.
-				if opts.SuppressionMap[fp] {
-					continue
+				// Record where this rule fired for suppression.
+				loc := locationKey(doc.FilePath, f.Evidence["line"])
+				if firedAt[loc] == nil {
+					firedAt[loc] = make(map[string]bool)
 				}
+				firedAt[loc][f.RuleID] = true
 
-				// Apply severity floor.
-				if opts.SeverityFloor != "" && f.Severity.Level() < opts.SeverityFloor.Level() {
-					continue
-				}
+				docFindings = append(docFindings, rawFinding{f, fp})
+			}
+		}
 
-				// Deduplicate by fingerprint.
-				if seen[fp] {
-					continue
-				}
-				seen[fp] = true
-
-				allFindings = append(allFindings, f)
-
-				// Apply max findings cap.
-				if opts.MaxFindings > 0 && len(allFindings) >= opts.MaxFindings {
-					return ScanResult{
-						Findings:     allFindings,
-						FilesScanned: len(docs),
-						RulesRun:     len(rulesRunSet),
+		// Phase 2: Apply rule-to-rule suppression within this document.
+		for _, rf := range docFindings {
+			loc := locationKey(doc.FilePath, rf.finding.Evidence["line"])
+			suppressed := false
+			for suppressorRule, suppressees := range ruleSuppressionMap {
+				if firedAt[loc][suppressorRule] {
+					for _, suppressee := range suppressees {
+						if rf.finding.RuleID == suppressee {
+							suppressed = true
+							break
+						}
 					}
 				}
+				if suppressed {
+					break
+				}
 			}
+			if !suppressed {
+				rawFindings = append(rawFindings, rf)
+			}
+		}
+	}
+
+	// Phase 3: Apply severity floor, fingerprint suppression, dedup, cap.
+	seen := make(map[string]bool)
+	var allFindings []document.ScanFinding
+
+	for _, rf := range rawFindings {
+		if opts.SuppressionMap[rf.fp] {
+			continue
+		}
+		if opts.SeverityFloor != "" && rf.finding.Severity.Level() < opts.SeverityFloor.Level() {
+			continue
+		}
+		if seen[rf.fp] {
+			continue
+		}
+		seen[rf.fp] = true
+
+		allFindings = append(allFindings, rf.finding)
+
+		if opts.MaxFindings > 0 && len(allFindings) >= opts.MaxFindings {
+			break
 		}
 	}
 

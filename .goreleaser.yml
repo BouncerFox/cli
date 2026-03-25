@@ -19,26 +19,24 @@ builds:
 
 archives:
   - id: default
-    builds: [bouncerfox, bf]
+    ids: [bouncerfox, bf]
+    formats: [tar.gz]
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: "checksums.txt"
 
-brews:
+homebrew_casks:
   - name: bouncerfox
+    binaries:
+      - bouncerfox
+      - bf
+    homepage: "https://github.com/bouncerfox/cli"
+    description: "Scan AI agent config files for security and quality issues"
     repository:
       owner: bouncerfox
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    homepage: "https://github.com/bouncerfox/cli"
-    description: "Scan AI agent config files for security and quality issues"
-    license: "Apache-2.0"
-    install: |
-      bin.install "bouncerfox"
-      bin.install "bf"
-    test: |
-      system "#{bin}/bf", "--version"

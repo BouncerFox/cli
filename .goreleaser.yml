@@ -33,6 +33,7 @@ brews:
     repository:
       owner: bouncerfox
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     homepage: "https://github.com/bouncerfox/cli"
     description: "Scan AI agent config files for security and quality issues"
     license: "Apache-2.0"

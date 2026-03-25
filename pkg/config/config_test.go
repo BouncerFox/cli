@@ -388,6 +388,29 @@ rules:
 	}
 }
 
+func TestLoadConfig_UnknownFields(t *testing.T) {
+	content := "profile: recommended\nunknown_field: value\nextra_stuff:\n  nested: true\n"
+	dir := writeConfig(t, content)
+	cfg, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Profile != "recommended" {
+		t.Errorf("expected profile 'recommended', got %q", cfg.Profile)
+	}
+}
+
+func TestLoadConfig_EmptyFile(t *testing.T) {
+	dir := writeConfig(t, "")
+	cfg, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Profile != "recommended" {
+		t.Errorf("expected default profile, got %q", cfg.Profile)
+	}
+}
+
 // helpers to access rules.RuleParams without importing rules in the test file.
 
 func getRuleParam(t *testing.T, ruleID, key string) any {

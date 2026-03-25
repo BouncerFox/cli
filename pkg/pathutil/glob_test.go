@@ -1,6 +1,9 @@
 package pathutil
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestMatchGlob(t *testing.T) {
 	tests := []struct {
@@ -45,4 +48,18 @@ func TestMatchGlob(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestMatchGlob_PathTraversal documents that MatchGlob treats ".." as a normal
+// path segment. Callers that need traversal protection must sanitize paths
+// before calling MatchGlob.
+func TestMatchGlob_PathTraversal(t *testing.T) {
+	if !MatchGlob("**/*.md", "../secret.md") {
+		t.Error("expected '..' to be treated as a normal segment and match")
+	}
+}
+
+func TestMatchGlob_VeryLongPath(t *testing.T) {
+	path := strings.Repeat("a/", 1000) + "file.md"
+	_ = MatchGlob("**/*.md", path)
 }

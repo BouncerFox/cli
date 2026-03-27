@@ -45,6 +45,12 @@ type Config struct {
 
 	// Ignore is a list of gitignore-style path patterns to skip.
 	Ignore []string `yaml:"ignore"`
+
+	// Target pins the repository identity for connected mode (e.g. "github:org/repo").
+	Target string `yaml:"target"`
+
+	// NoFloor disables the minimum rule floor (set via CLI flag, not YAML).
+	NoFloor bool `yaml:"-"`
 }
 
 // DefaultConfig returns a Config with sensible defaults.
@@ -105,10 +111,12 @@ func clampSeverity(ruleID string, sv document.FindingSeverity) document.FindingS
 // rawConfig is an intermediate struct used during YAML parsing so we can
 // validate string-typed severity fields before converting them.
 type rawConfig struct {
-	Profile       string                   `yaml:"profile"`
-	SeverityFloor string                   `yaml:"severity_floor"`
-	Rules         map[string]rawRuleConfig `yaml:"rules"`
-	Ignore        []string                 `yaml:"ignore"`
+	Profile        string                   `yaml:"profile"`
+	SeverityFloor  string                   `yaml:"severity_floor"`
+	Rules          map[string]rawRuleConfig `yaml:"rules"`
+	Ignore         []string                 `yaml:"ignore"`
+	Target         string                   `yaml:"target"`
+	PlatformPolicy map[string]any           `yaml:"platform_policy"` // parsed and silently discarded
 }
 
 type rawRuleConfig struct {
@@ -117,27 +125,12 @@ type rawRuleConfig struct {
 	Params   map[string]any `yaml:"params"`
 }
 
-// LoadConfig searches dir for .bouncerfox.yml or .bouncerfox.yaml, parses it,
-// and returns the validated Config. If no file is found, DefaultConfig is
-// returned. Validation errors (invalid severity values) are returned as errors.
-// Unknown rule IDs are logged as warnings.
-func LoadConfig(dir string) (*Config, error) {
-	data, err := readConfigFile(dir)
-	if err != nil {
-		return nil, err
-	}
-	if data == nil {
-		return DefaultConfig(), nil
-	}
-
-	var raw rawConfig
-	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("config: YAML parse error: %w", err)
-	}
-
+// parseRawConfig converts a rawConfig into a validated Config.
+func parseRawConfig(raw rawConfig) (*Config, error) {
 	cfg := &Config{
 		Profile: raw.Profile,
 		Ignore:  raw.Ignore,
+		Target:  raw.Target,
 		Rules:   make(map[string]RuleConfig, len(raw.Rules)),
 	}
 
@@ -182,6 +175,32 @@ func LoadConfig(dir string) (*Config, error) {
 	return cfg, nil
 }
 
+// LoadConfig searches dir for .bouncerfox.yml or .bouncerfox.yaml, parses it,
+// and returns the validated Config. If no file is found, DefaultConfig is
+// returned. Validation errors (invalid severity values) are returned as errors.
+// Unknown rule IDs are logged as warnings.
+func LoadConfig(dir string) (*Config, error) {
+	data, err := readConfigFile(dir)
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return DefaultConfig(), nil
+	}
+	return ParseConfigBytes(data)
+}
+
+// ParseConfigBytes parses a .bouncerfox.yml config from raw bytes.
+// It applies the same validation as LoadConfig. This is used when consuming
+// a platform-merged config pulled from the API.
+func ParseConfigBytes(data []byte) (*Config, error) {
+	var raw rawConfig
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("config: YAML parse error: %w", err)
+	}
+	return parseRawConfig(raw)
+}
+
 // readConfigFile looks for .bouncerfox.yml then .bouncerfox.yaml in dir.
 // Returns the file contents, nil if no file found, or an error on read failure.
 func readConfigFile(dir string) ([]byte, error) {
@@ -200,6 +219,15 @@ func readConfigFile(dir string) ([]byte, error) {
 
 // ToScanOptions translates the Config into engine.ScanOptions and applies
 // per-rule param overrides to rules.RuleParams.
+// floorRules are the rule IDs that can never be disabled (unless NoFloor is
+// set). These protect against the most dangerous classes of finding:
+// secrets (SEC_001), destructive commands (SEC_003), invisible unicode (SEC_004).
+var floorRules = map[string]bool{
+	"SEC_001": true,
+	"SEC_003": true,
+	"SEC_004": true,
+}
+
 // recommendedDisabled is the set of rules disabled in the "recommended" profile.
 var recommendedDisabled = map[string]bool{
 	"QA_001":  true,
@@ -235,12 +263,8 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 			}
 		}
 
-		// Apply severity override with floor enforcement.
 		if rc.Severity != nil {
-			sev := *rc.Severity
-			// Enforce severity floor: CRITICAL rules cannot go below HIGH.
-			sev = clampSeverity(id, sev)
-			severityOverrides[id] = sev
+			severityOverrides[id] = clampSeverity(id, *rc.Severity)
 		}
 
 		// Apply per-rule param overrides to the global RuleParams map.
@@ -252,6 +276,18 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 				rules.RuleParams[id][k] = v
 			}
 		}
+	}
+
+	if !c.NoFloor {
+		var filtered []string
+		for _, d := range disabled {
+			if floorRules[d] {
+				fmt.Fprintf(os.Stderr, "warning: critical rule %s cannot be disabled; enforcing local floor\n", d)
+				continue
+			}
+			filtered = append(filtered, d)
+		}
+		disabled = filtered
 	}
 
 	return engine.ScanOptions{

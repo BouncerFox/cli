@@ -289,10 +289,11 @@ func TestToScanOptions_SeverityFloor(t *testing.T) {
 }
 
 // TestToScanOptions_DisabledRule verifies a disabled rule appears in DisabledRules.
+// Uses SEC_006 (non-floor rule) to avoid the minimum rule floor enforcement.
 func TestToScanOptions_DisabledRule(t *testing.T) {
 	yaml := `
 rules:
-  SEC_001:
+  SEC_006:
     enabled: false
 `
 	dir := writeConfig(t, yaml)
@@ -304,12 +305,12 @@ rules:
 
 	found := false
 	for _, id := range opts.DisabledRules {
-		if id == "SEC_001" {
+		if id == "SEC_006" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("SEC_001 should be in DisabledRules, got: %v", opts.DisabledRules)
+		t.Errorf("SEC_006 should be in DisabledRules, got: %v", opts.DisabledRules)
 	}
 }
 
@@ -408,6 +409,77 @@ func TestLoadConfig_EmptyFile(t *testing.T) {
 	}
 	if cfg.Profile != "recommended" {
 		t.Errorf("expected default profile, got %q", cfg.Profile)
+	}
+}
+
+func TestConfig_TargetField(t *testing.T) {
+	dir := writeConfig(t, "target: github:test/repo\nprofile: recommended\n")
+	cfg, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Target != "github:test/repo" {
+		t.Errorf("expected target, got %q", cfg.Target)
+	}
+}
+
+func TestConfig_PlatformPolicyStripped(t *testing.T) {
+	dir := writeConfig(t, "profile: recommended\nplatform_policy:\n  block_threshold: critical\n")
+	cfg, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Profile != "recommended" {
+		t.Errorf("expected recommended, got %q", cfg.Profile)
+	}
+}
+
+func TestConfig_MinimumRuleFloor(t *testing.T) {
+	dir := writeConfig(t, "profile: all_rules\nrules:\n  SEC_001:\n    enabled: false\n  SEC_003:\n    enabled: false\n  SEC_004:\n    enabled: false\n")
+	cfg, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := cfg.ToScanOptions()
+	disabled := make(map[string]bool)
+	for _, d := range opts.DisabledRules {
+		disabled[d] = true
+	}
+	for _, critical := range []string{"SEC_001", "SEC_003", "SEC_004"} {
+		if disabled[critical] {
+			t.Errorf("critical rule %s should not be disableable", critical)
+		}
+	}
+}
+
+func TestConfig_NoFloorBypasses(t *testing.T) {
+	dir := writeConfig(t, "profile: all_rules\nrules:\n  SEC_001:\n    enabled: false\n")
+	cfg, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.NoFloor = true
+	opts := cfg.ToScanOptions()
+	disabled := make(map[string]bool)
+	for _, d := range opts.DisabledRules {
+		disabled[d] = true
+	}
+	if !disabled["SEC_001"] {
+		t.Error("SEC_001 should be disableable when NoFloor=true")
+	}
+}
+
+func TestParseConfigBytes(t *testing.T) {
+	data := []byte("profile: all_rules\ntarget: github:test/repo\n")
+	cfg, err := config.ParseConfigBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Profile != "all_rules" {
+		t.Errorf("expected all_rules, got %q", cfg.Profile)
+	}
+	if cfg.Target != "github:test/repo" {
+		t.Errorf("expected target, got %q", cfg.Target)
 	}
 }
 

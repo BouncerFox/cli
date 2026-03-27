@@ -48,10 +48,10 @@ When porting a rule, always read the Python source to get exact regex patterns a
 ```bash
 go test ./... -v              # run all tests
 go test ./pkg/document/ -v    # run specific package tests
-go build -o bf ./cmd/bouncerfox  # build binary
-./bf scan .                   # run scanner
-./bf rules                    # list rules
-./bf init                     # generate config
+go build -o bouncerfox ./cmd/bouncerfox  # build binary
+./bouncerfox scan .                   # run scanner
+./bouncerfox rules                    # list rules
+./bouncerfox init                     # generate config
 ```
 
 ## Architecture

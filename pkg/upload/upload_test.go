@@ -138,12 +138,8 @@ func TestUpload_Anonymous_StripsFilePaths(t *testing.T) {
 	findings := payload["findings"].([]any)
 	for _, f := range findings {
 		fm := f.(map[string]any)
-		ev, ok := fm["evidence"].(map[string]any)
-		if !ok {
-			continue
-		}
-		if _, hasFile := ev["file"]; hasFile {
-			t.Error("anonymous mode should strip file paths from evidence")
+		if _, hasFile := fm["file"]; hasFile {
+			t.Error("anonymous mode should strip file field from finding")
 		}
 	}
 }
@@ -165,9 +161,8 @@ func TestUpload_StripPaths_UsesBasename(t *testing.T) {
 
 	findings := payload["findings"].([]any)
 	first := findings[0].(map[string]any)
-	ev := first["evidence"].(map[string]any)
 
-	got, _ := ev["file"].(string)
+	got, _ := first["file"].(string)
 	want := "CLAUDE.md"
 	if got != want {
 		t.Errorf("StripPaths: expected file=%q, got %q", want, got)
@@ -407,7 +402,7 @@ func TestPayload_FindingShape(t *testing.T) {
 	findings := payload["findings"].([]any)
 	first := findings[0].(map[string]any)
 
-	for _, key := range []string{"rule_id", "severity", "message", "evidence"} {
+	for _, key := range []string{"rule_id", "severity", "message", "file", "line"} {
 		if _, ok := first[key]; !ok {
 			t.Errorf("finding missing key %q", key)
 		}
@@ -417,6 +412,96 @@ func TestPayload_FindingShape(t *testing.T) {
 	}
 	if first["severity"] != "critical" {
 		t.Errorf("expected severity critical, got %v", first["severity"])
+	}
+	if _, hasEvidence := first["evidence"]; hasEvidence {
+		t.Error("finding must not have evidence field")
+	}
+}
+
+// ---- safety assertions -----------------------------------------------------
+
+func TestPayload_NeverContainsSnippetOrEvidence(t *testing.T) {
+	findings := []document.ScanFinding{{
+		RuleID:   "SEC_001",
+		Severity: document.SeverityCritical,
+		Message:  "secret found",
+		Evidence: map[string]any{
+			"file": "test.md", "line": 5,
+			"snippet": "sk-SECRETVALUE", "matched": "sk-SECRETVALUE",
+		},
+		Remediation: "remove it",
+	}}
+	var buf bytes.Buffer
+	_ = Upload(context.Background(), UploadOptions{
+		PlatformURL: "https://x.com",
+		DryRun:      true,
+		Findings:    findings,
+		ScanMeta:    sampleMeta,
+	}, &buf)
+
+	raw := buf.String()
+	if strings.Contains(raw, `"snippet"`) {
+		t.Error("serialized payload must never contain 'snippet'")
+	}
+	if strings.Contains(raw, `"evidence"`) {
+		t.Error("serialized payload must never contain 'evidence'")
+	}
+	if strings.Contains(raw, "SECRETVALUE") {
+		t.Error("serialized payload must never contain matched secret values")
+	}
+}
+
+func TestPayload_FlatFindingFields(t *testing.T) {
+	findings := []document.ScanFinding{{
+		RuleID:   "SEC_002",
+		Severity: document.SeverityHigh,
+		Message:  "external URL",
+		Evidence: map[string]any{"file": "SKILL.md", "line": 10},
+	}}
+	var buf bytes.Buffer
+	_ = Upload(context.Background(), UploadOptions{
+		PlatformURL: "https://x.com",
+		DryRun:      true,
+		Findings:    findings,
+		ScanMeta:    sampleMeta,
+	}, &buf)
+
+	var payload map[string]any
+	json.Unmarshal(buf.Bytes(), &payload)
+	f := payload["findings"].([]any)[0].(map[string]any)
+
+	if f["file"] != "SKILL.md" {
+		t.Errorf("expected top-level file field, got %v", f["file"])
+	}
+	if int(f["line"].(float64)) != 10 {
+		t.Errorf("expected top-level line field, got %v", f["line"])
+	}
+	if _, hasEvidence := f["evidence"]; hasEvidence {
+		t.Error("finding must not have evidence field")
+	}
+}
+
+func TestPayload_MessageCappedAt500(t *testing.T) {
+	long := strings.Repeat("x", 600)
+	findings := []document.ScanFinding{{
+		RuleID:   "QA_001",
+		Severity: document.SeverityWarn,
+		Message:  long,
+	}}
+	var buf bytes.Buffer
+	_ = Upload(context.Background(), UploadOptions{
+		PlatformURL: "https://x.com",
+		DryRun:      true,
+		Findings:    findings,
+		ScanMeta:    sampleMeta,
+	}, &buf)
+
+	var payload map[string]any
+	json.Unmarshal(buf.Bytes(), &payload)
+	f := payload["findings"].([]any)[0].(map[string]any)
+	msg := f["message"].(string)
+	if len(msg) > 500 {
+		t.Errorf("message should be capped at 500 chars, got %d", len(msg))
 	}
 }
 

@@ -52,11 +52,13 @@ type ScanMeta struct {
 
 // uploadFinding is the wire representation of a finding in the upload payload.
 type uploadFinding struct {
-	RuleID      string         `json:"rule_id"`
-	Severity    string         `json:"severity"`
-	Message     string         `json:"message"`
-	Evidence    map[string]any `json:"evidence,omitempty"`
-	Remediation string         `json:"remediation,omitempty"`
+	RuleID      string `json:"rule_id"`
+	Severity    string `json:"severity"`
+	Message     string `json:"message"`
+	File        string `json:"file,omitempty"`
+	Line        int    `json:"line,omitempty"`
+	Fingerprint string `json:"fingerprint"`
+	Remediation string `json:"remediation,omitempty"`
 }
 
 // uploadPayload is the full JSON body sent to the platform.
@@ -185,38 +187,61 @@ func validateHTTPS(rawURL string) error {
 	return nil
 }
 
-// buildFindings converts ScanFindings to the wire format, applying path
+const maxMessageLen = 500
+
+// buildFindings converts ScanFindings to the flat wire format, applying path
 // transformations according to stripPaths and anonymous flags.
 func buildFindings(findings []document.ScanFinding, stripPaths, anonymous bool) []uploadFinding {
 	out := make([]uploadFinding, 0, len(findings))
 	for _, f := range findings {
-		ev := transformEvidence(f.Evidence, stripPaths, anonymous)
-		out = append(out, uploadFinding{
+		msg := f.Message
+		if len(msg) > maxMessageLen {
+			msg = msg[:maxMessageLen]
+		}
+
+		wf := uploadFinding{
 			RuleID:      f.RuleID,
 			Severity:    string(f.Severity),
-			Message:     f.Message,
-			Evidence:    ev,
+			Message:     msg,
+			Fingerprint: evidenceString(f.Evidence, "fingerprint"),
 			Remediation: f.Remediation,
-		})
+		}
+
+		if !anonymous {
+			file := evidenceString(f.Evidence, "file")
+			if stripPaths && file != "" {
+				file = filepath.Base(file)
+			}
+			wf.File = file
+			wf.Line = evidenceInt(f.Evidence, "line")
+		}
+
+		out = append(out, wf)
 	}
 	return out
 }
 
-// transformEvidence applies path transformations to an evidence map.
-func transformEvidence(ev map[string]any, stripPaths, anonymous bool) map[string]any {
+func evidenceString(ev map[string]any, key string) string {
 	if ev == nil {
-		return nil
+		return ""
 	}
-	cp := make(map[string]any, len(ev))
-	for k, v := range ev {
-		cp[k] = v
+	if v, ok := ev[key].(string); ok {
+		return v
 	}
-	if anonymous {
-		delete(cp, "file")
-	} else if stripPaths {
-		if file, ok := cp["file"].(string); ok && file != "" {
-			cp["file"] = filepath.Base(file)
-		}
+	return ""
+}
+
+func evidenceInt(ev map[string]any, key string) int {
+	if ev == nil {
+		return 0
 	}
-	return cp
+	switch v := ev[key].(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	case int64:
+		return int(v)
+	}
+	return 0
 }

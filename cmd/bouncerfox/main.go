@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -51,6 +53,8 @@ func main() {
 	rootCmd.AddCommand(newScanCmd())
 	rootCmd.AddCommand(newRulesCmd())
 	rootCmd.AddCommand(newInitCmd())
+	rootCmd.AddCommand(newAuthCmd())
+	rootCmd.AddCommand(newConfigCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(2)
@@ -530,4 +534,63 @@ func newInitCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// newAuthCmd returns the `bouncerfox auth` subcommand.
+func newAuthCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "auth",
+		Short: "Authenticate with the BouncerFox platform",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			platformURL := auth.PlatformURL()
+			webURL := strings.Replace(platformURL, "api.", "app.", 1) + "/auth/cli"
+
+			fmt.Fprintf(os.Stderr, "Opening browser to %s...\n", webURL)
+			_ = openBrowser(webURL)
+
+			fmt.Fprint(os.Stderr, "Paste your API key: ")
+			var key string
+			fmt.Scanln(&key)
+
+			key = strings.TrimSpace(key)
+			if key == "" {
+				return fmt.Errorf("no API key provided")
+			}
+
+			if err := auth.SaveCredentials(key); err != nil {
+				return fmt.Errorf("saving credentials: %w", err)
+			}
+			fmt.Fprintln(os.Stderr, "Authenticated. API key stored.")
+			return nil
+		},
+	}
+}
+
+// openBrowser opens the given URL in the system browser (best-effort).
+func openBrowser(url string) error {
+	for _, cmd := range []string{"xdg-open", "open", "rundll32"} {
+		if err := exec.Command(cmd, url).Start(); err == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("could not open browser")
+}
+
+// newConfigCmd returns the `bouncerfox config` subcommand group.
+func newConfigCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Manage scanner configuration",
+	}
+	cmd.AddCommand(&cobra.Command{
+		Use:   "refresh",
+		Short: "Invalidate cached platform config",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cache := platform.NewConfigCache(platform.DefaultCacheDir())
+			cache.InvalidateAll()
+			fmt.Fprintln(os.Stderr, "Config cache cleared.")
+			return nil
+		},
+	})
+	return cmd
 }

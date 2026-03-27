@@ -330,6 +330,18 @@ func newScanCmd() *cobra.Command {
 								fmt.Fprintf(os.Stderr, "warning: PR comment failed: %v\n", err)
 							}
 						}
+
+						// Post check run if we have a commit SHA.
+						if tgt.Commit != "" {
+							if err := gh.PostCheckRun(ctx, gh.CheckRunOptions{
+								Token: token, Owner: owner, Repo: repo,
+								CommitSHA:  tgt.Commit,
+								Findings:   result.Findings,
+								Conclusion: gh.DeriveConclusion(result.Findings),
+							}); err != nil {
+								fmt.Fprintf(os.Stderr, "warning: check run failed: %v\n", err)
+							}
+						}
 					}
 				}
 			}

@@ -164,9 +164,9 @@ func TestDeriveConclusion(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		got := deriveConclusion(c.findings)
+		got := DeriveConclusion(c.findings)
 		if got != c.conclusion {
-			t.Errorf("deriveConclusion(%v findings) = %q, want %q", len(c.findings), got, c.conclusion)
+			t.Errorf("DeriveConclusion(%v findings) = %q, want %q", len(c.findings), got, c.conclusion)
 		}
 	}
 }

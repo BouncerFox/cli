@@ -119,7 +119,7 @@ func DetectRepoInfo() (owner, repo string, err error) {
 func PostCheckRun(ctx context.Context, opts CheckRunOptions) error {
 	conclusion := opts.Conclusion
 	if conclusion == "" {
-		conclusion = deriveConclusion(opts.Findings)
+		conclusion = DeriveConclusion(opts.Findings)
 	}
 
 	annotations := buildAnnotations(opts.Findings)
@@ -290,8 +290,8 @@ func doRequest(ctx context.Context, method, url, token string, body any) ([]byte
 	return data, nil
 }
 
-// deriveConclusion maps finding severities to a GitHub check conclusion.
-func deriveConclusion(findings []document.ScanFinding) string {
+// DeriveConclusion maps finding severities to a GitHub check conclusion.
+func DeriveConclusion(findings []document.ScanFinding) string {
 	if len(findings) == 0 {
 		return "success"
 	}

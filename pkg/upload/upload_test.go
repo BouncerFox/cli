@@ -505,6 +505,32 @@ func TestPayload_MessageCappedAt500(t *testing.T) {
 	}
 }
 
+// ---- IdempotencyKey --------------------------------------------------------
+
+func TestIdempotencyKey_Deterministic(t *testing.T) {
+	k1 := IdempotencyKey("github:a/b", "sha1", "cfghash", []string{"fp1", "fp2"})
+	k2 := IdempotencyKey("github:a/b", "sha1", "cfghash", []string{"fp1", "fp2"})
+	if k1 != k2 {
+		t.Error("same inputs should produce same key")
+	}
+}
+
+func TestIdempotencyKey_OrderIndependent(t *testing.T) {
+	k1 := IdempotencyKey("t", "c", "h", []string{"b", "a"})
+	k2 := IdempotencyKey("t", "c", "h", []string{"a", "b"})
+	if k1 != k2 {
+		t.Error("fingerprint order should not matter")
+	}
+}
+
+func TestIdempotencyKey_DifferentInputsDiffer(t *testing.T) {
+	k1 := IdempotencyKey("t1", "c", "h", nil)
+	k2 := IdempotencyKey("t2", "c", "h", nil)
+	if k1 == k2 {
+		t.Error("different targets should produce different keys")
+	}
+}
+
 // ---- internal helpers used in tests ----------------------------------------
 
 // doUpload is the internal implementation of Upload minus the HTTPS check.

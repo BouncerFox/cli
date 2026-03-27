@@ -4,6 +4,7 @@ package upload
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/bouncerfox/cli/pkg/document"
@@ -171,6 +173,22 @@ func PullConfig(ctx context.Context, platformURL, apiKey, outputPath string) err
 	}
 
 	return nil
+}
+
+// IdempotencyKey generates a deterministic key for upload deduplication.
+// For git scans: sha256(target + commitSHA + configHash + sorted fingerprints).
+// For non-git scans: caller should pass a UUID nonce as commitSHA.
+func IdempotencyKey(target, commitSHA, configHash string, fingerprints []string) string {
+	sorted := make([]string, len(fingerprints))
+	copy(sorted, fingerprints)
+	sort.Strings(sorted)
+
+	h := sha256.New()
+	fmt.Fprintf(h, "%s\n%s\n%s\n", target, commitSHA, configHash)
+	for _, fp := range sorted {
+		fmt.Fprintf(h, "%s\n", fp)
+	}
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 // --- internal helpers -------------------------------------------------------

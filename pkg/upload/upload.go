@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/bouncerfox/cli/pkg/document"
+	"github.com/bouncerfox/cli/pkg/platform"
 )
 
 // httpClient is used for all platform API requests (with a 30-second timeout).
@@ -191,33 +192,17 @@ func IdempotencyKey(target, commitSHA, configHash string, fingerprints []string)
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
-// --- internal helpers -------------------------------------------------------
-
-// validateHTTPS returns an error if rawURL does not use the https scheme.
-func validateHTTPS(rawURL string) error {
-	u, err := url.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("upload: invalid URL %q: %w", rawURL, err)
-	}
-	if u.Scheme != "https" {
-		return fmt.Errorf("upload: platform URL must use HTTPS (got %q)", rawURL)
-	}
-	return nil
-}
-
-const maxMessageLen = 500
-
-// buildFindings converts ScanFindings to the flat wire format, applying path
-// transformations according to stripPaths and anonymous flags.
-func buildFindings(findings []document.ScanFinding, stripPaths, anonymous bool) []uploadFinding {
-	out := make([]uploadFinding, 0, len(findings))
+// BuildWireFindings converts ScanFindings to the platform wire format,
+// applying path transformations according to stripPaths and anonymous flags.
+func BuildWireFindings(findings []document.ScanFinding, stripPaths, anonymous bool) []platform.WireFinding {
+	out := make([]platform.WireFinding, 0, len(findings))
 	for _, f := range findings {
 		msg := f.Message
 		if len(msg) > maxMessageLen {
 			msg = msg[:maxMessageLen]
 		}
 
-		wf := uploadFinding{
+		wf := platform.WireFinding{
 			RuleID:      f.RuleID,
 			Severity:    string(f.Severity),
 			Message:     msg,
@@ -235,6 +220,41 @@ func buildFindings(findings []document.ScanFinding, stripPaths, anonymous bool) 
 		}
 
 		out = append(out, wf)
+	}
+	return out
+}
+
+// --- internal helpers -------------------------------------------------------
+
+// validateHTTPS returns an error if rawURL does not use the https scheme.
+func validateHTTPS(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("upload: invalid URL %q: %w", rawURL, err)
+	}
+	if u.Scheme != "https" {
+		return fmt.Errorf("upload: platform URL must use HTTPS (got %q)", rawURL)
+	}
+	return nil
+}
+
+const maxMessageLen = 500
+
+// buildFindings converts ScanFindings to the legacy upload format.
+// Delegates to BuildWireFindings to avoid duplication.
+func buildFindings(findings []document.ScanFinding, stripPaths, anonymous bool) []uploadFinding {
+	wire := BuildWireFindings(findings, stripPaths, anonymous)
+	out := make([]uploadFinding, len(wire))
+	for i, w := range wire {
+		out[i] = uploadFinding{
+			RuleID:      w.RuleID,
+			Severity:    w.Severity,
+			Message:     w.Message,
+			File:        w.File,
+			Line:        w.Line,
+			Fingerprint: w.Fingerprint,
+			Remediation: w.Remediation,
+		}
 	}
 	return out
 }

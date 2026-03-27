@@ -2,6 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -19,7 +23,9 @@ import (
 	"github.com/bouncerfox/cli/pkg/output"
 	"github.com/bouncerfox/cli/pkg/parser"
 	"github.com/bouncerfox/cli/pkg/pathutil"
+	"github.com/bouncerfox/cli/pkg/platform"
 	"github.com/bouncerfox/cli/pkg/rules"
+	"github.com/bouncerfox/cli/pkg/target"
 	"github.com/bouncerfox/cli/pkg/upload"
 )
 
@@ -60,11 +66,14 @@ func newScanCmd() *cobra.Command {
 		maxFindingsFlag int
 		githubComment   bool
 		prNumber        int
-		uploadFlag      bool
-		apiKey          string
 		dryRunUpload    bool
 		stripPaths      bool
 		anonymous       bool
+		noCacheFlag     bool
+		targetFlag      string
+		triggerFlag     string
+		offlineBehavior string
+		noFloorFlag     bool
 	)
 
 	cmd := &cobra.Command{
@@ -78,7 +87,7 @@ func newScanCmd() *cobra.Command {
 				paths = []string{"."}
 			}
 
-			// Load config.
+			// Load local config.
 			configDir := "."
 			if configFlag != "" {
 				configDir = filepath.Dir(configFlag)
@@ -88,7 +97,76 @@ func newScanCmd() *cobra.Command {
 				return fmt.Errorf("loading config: %w", err)
 			}
 
-			// Apply --severity flag as severity floor override.
+			// Connected mode detection.
+			apiKey := auth.ResolveAPIKey()
+			connected := apiKey != ""
+			platformURL := auth.PlatformURL()
+
+			// Validate HTTPS for connected mode.
+			if connected {
+				if err := platform.ValidateHTTPS(platformURL); err != nil {
+					return err
+				}
+			}
+
+			// Detect scan target (needed for both modes).
+			absRootFirst, _ := filepath.Abs(paths[0])
+			tgt := target.Detect(target.DetectOptions{
+				ScanRoot:     absRootFirst,
+				TargetFlag:   targetFlag,
+				ConfigTarget: cfg.Target,
+				TriggerFlag:  triggerFlag,
+			})
+
+			// Wrap the entire scan in a timeout context.
+			ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
+			defer cancel()
+
+			// Connected mode: pull config from platform (before scan, after local config load).
+			var configHash string
+			var pc *platform.HTTPClient
+			if connected {
+				pc = platform.NewHTTPClient(platformURL, apiKey)
+			}
+			if connected && !dryRunUpload {
+				cache := platform.NewConfigCache(platform.DefaultCacheDir())
+				skipCache := noCacheFlag || tgt.Trigger == "ci"
+
+				var etag string
+				if !skipCache {
+					if entry, ok := cache.Load(tgt.ID); ok {
+						// Cache hit — use cached config.
+						if remoteCfg, parseErr := config.ParseConfigBytes([]byte(entry.Body)); parseErr == nil {
+							cfg = remoteCfg
+							configHash = hashString(entry.Body)
+						}
+						etag = entry.ETag
+					}
+				}
+
+				// Pull fresh config (or validate cache with ETag).
+				pullResp, pullErr := pc.PullConfig(ctx, platform.PullConfigRequest{
+					Target: tgt.ID,
+					ETag:   etag,
+				})
+				if pullErr != nil {
+					fmt.Fprintf(os.Stderr, "warning: config pull failed: %v (using local config)\n", pullErr)
+				} else if pullResp.NotModified {
+					// Cache is still valid; configHash already set above.
+				} else {
+					// Fresh config from platform.
+					if remoteCfg, parseErr := config.ParseConfigBytes([]byte(pullResp.Body)); parseErr != nil {
+						fmt.Fprintf(os.Stderr, "warning: could not parse platform config: %v (using local config)\n", parseErr)
+					} else {
+						cfg = remoteCfg
+						configHash = hashString(pullResp.Body)
+						cache.Store(tgt.ID, pullResp.Body, pullResp.ETag)
+					}
+				}
+			}
+
+			// Apply CLI-only overrides after all config resolution.
+			cfg.NoFloor = noFloorFlag
 			if severityFlag != "" {
 				sv := document.FindingSeverity(severityFlag)
 				if sv.Level() < 0 {
@@ -97,9 +175,8 @@ func newScanCmd() *cobra.Command {
 				cfg.SeverityFloor = sv
 			}
 
-			// Wrap the entire scan in a timeout context.
-			ctx, cancel := context.WithTimeout(context.Background(), scanTimeout)
-			defer cancel()
+			// Record scan start time.
+			scanStart := time.Now()
 
 			// Collect governed files.
 			var docs []*document.ConfigDocument
@@ -211,6 +288,9 @@ func newScanCmd() *cobra.Command {
 			// Run scan.
 			result := engine.Scan(docs, opts)
 
+			// Compute scan duration.
+			scanDuration := time.Since(scanStart)
+
 			// Format and write output.
 			switch formatFlag {
 			case "json":
@@ -250,26 +330,86 @@ func newScanCmd() *cobra.Command {
 				}
 			}
 
-			// Platform upload.
-			if uploadFlag || dryRunUpload {
-				key := apiKey
-				if key == "" {
-					key = auth.ResolveAPIKey()
+			// Connected mode: upload findings and use verdict for exit code.
+			if connected || dryRunUpload {
+				wireFindings := upload.BuildWireFindings(result.Findings, stripPaths, anonymous)
+
+				fps := make([]string, len(wireFindings))
+				for i, wf := range wireFindings {
+					fps[i] = wf.Fingerprint
 				}
-				if err := upload.Upload(ctx, upload.UploadOptions{
-					PlatformURL: auth.PlatformURL(),
-					APIKey:      key,
-					StripPaths:  stripPaths,
-					Anonymous:   anonymous,
-					DryRun:      dryRunUpload,
-					Findings:    result.Findings,
-				}, os.Stdout); err != nil {
-					fmt.Fprintf(os.Stderr, "error: upload failed: %v\n", err)
+
+				// Non-git scans need a UUID nonce for idempotency.
+				commitForKey := tgt.Commit
+				if commitForKey == "" {
+					commitForKey = uuidV4()
 				}
+				idemKey := upload.IdempotencyKey(tgt.ID, commitForKey, configHash, fps)
+
+				uploadReq := platform.UploadRequest{
+					Version:        upload.Version,
+					CLIVersion:     version,
+					CLIChecksum:    binaryChecksum(),
+					Trigger:        tgt.Trigger,
+					Timestamp:      scanStart.UTC().Format(time.RFC3339),
+					DurationMs:     int(scanDuration.Milliseconds()),
+					TotalFiles:     fileCount,
+					ScannedFiles:   result.FilesScanned,
+					Profile:        cfg.Profile,
+					ConfigHash:     configHash,
+					Findings:       wireFindings,
+					IdempotencyKey: idemKey,
+				}
+
+				if !anonymous {
+					uploadReq.Target = tgt.ID
+					uploadReq.TargetLabel = tgt.Label
+					uploadReq.CommitSHA = tgt.Commit
+					uploadReq.Branch = tgt.Branch
+				}
+
+				if dryRunUpload {
+					data, err := json.MarshalIndent(uploadReq, "", "  ")
+					if err != nil {
+						return fmt.Errorf("dry-run: marshal: %w", err)
+					}
+					_, _ = os.Stdout.Write(data)
+					fmt.Fprintln(os.Stdout)
+					if len(result.Findings) > 0 {
+						os.Exit(1)
+					}
+					return nil
+				}
+
+				verdict, uploadErr := pc.Upload(ctx, uploadReq)
+				if uploadErr != nil {
+					fmt.Fprintf(os.Stderr, "error: upload failed: %v\n", uploadErr)
+					// Handle offline behavior.
+					switch offlineBehavior {
+					case "fail-closed":
+						os.Exit(2)
+					default: // "warn" — fall back to local exit logic
+						fmt.Fprintln(os.Stderr, "warning: falling back to local exit logic")
+						if len(result.Findings) > 0 {
+							os.Exit(1)
+						}
+						return nil
+					}
+				}
+
+				if verdict.DashboardURL != "" {
+					fmt.Fprintf(os.Stderr, "Dashboard: %s\n", verdict.DashboardURL)
+				}
+				for _, r := range verdict.Reasons {
+					fmt.Fprintf(os.Stderr, "  [%s] %s: %s\n", r.Rule, r.Policy, r.Message)
+				}
+
+				os.Exit(verdict.ExitCode())
 			}
 
-			// Exit code: 0 = no findings, 1 = findings found.
+			// Standalone mode: findings > 0 means exit 1.
 			if len(result.Findings) > 0 {
+				fmt.Fprintln(os.Stderr, "View trends and enforce team policy \u2192 bouncerfox auth")
 				os.Exit(1)
 			}
 			return nil
@@ -282,13 +422,47 @@ func newScanCmd() *cobra.Command {
 	cmd.Flags().IntVar(&maxFindingsFlag, "max-findings", 0, "cap total findings (0 = unlimited)")
 	cmd.Flags().BoolVar(&githubComment, "github-comment", false, "post findings as PR comment (requires GITHUB_TOKEN)")
 	cmd.Flags().IntVar(&prNumber, "pr-number", 0, "PR number for GitHub comment (auto-detected in CI)")
-	cmd.Flags().BoolVar(&uploadFlag, "upload", false, "upload findings to BouncerFox platform")
-	cmd.Flags().StringVar(&apiKey, "api-key", "", "API key for platform upload (also via BOUNCERFOX_API_KEY)")
 	cmd.Flags().BoolVar(&dryRunUpload, "dry-run-upload", false, "preview upload payload without sending")
 	cmd.Flags().BoolVar(&stripPaths, "strip-paths", false, "send filenames only in upload (no full paths)")
 	cmd.Flags().BoolVar(&anonymous, "anonymous", false, "strip all identifying info from upload")
+	cmd.Flags().BoolVar(&noCacheFlag, "no-cache", false, "skip config cache (always pull fresh)")
+	cmd.Flags().StringVar(&targetFlag, "target", "", "override scan target identity")
+	cmd.Flags().StringVar(&triggerFlag, "trigger", "", "override trigger detection (ci or local)")
+	cmd.Flags().StringVar(&offlineBehavior, "offline-behavior", "warn", "behavior when upload fails: warn or fail-closed")
+	cmd.Flags().BoolVar(&noFloorFlag, "no-floor", false, "allow disabling critical floor rules")
+	_ = cmd.Flags().MarkHidden("no-floor")
 
 	return cmd
+}
+
+// hashString returns the hex-encoded SHA-256 of s.
+func hashString(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
+}
+
+// uuidV4 generates a random UUID v4 string without external dependencies.
+func uuidV4() string {
+	var b [16]byte
+	_, _ = rand.Read(b[:])
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+// binaryChecksum returns the SHA-256 hex digest of the running binary.
+// Returns "" if the binary cannot be read.
+func binaryChecksum() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(exe)
+	if err != nil {
+		return ""
+	}
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
 }
 
 // newRulesCmd returns the `bouncerfox rules` subcommand.

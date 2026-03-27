@@ -388,9 +388,17 @@ func newScanCmd() *cobra.Command {
 				verdict, uploadErr := pc.Upload(ctx, uploadReq)
 				if uploadErr != nil {
 					fmt.Fprintf(os.Stderr, "error: upload failed: %v\n", uploadErr)
-					// Handle offline behavior.
-					switch offlineBehavior {
+					behavior := offlineBehavior
+					if behavior == "" {
+						if tgt.Trigger == "ci" {
+							behavior = "fail-closed"
+						} else {
+							behavior = "warn"
+						}
+					}
+					switch behavior {
 					case "fail-closed":
+						fmt.Fprintln(os.Stderr, "error: platform unreachable — verdict unknown")
 						os.Exit(2)
 					default: // "warn" — fall back to local exit logic
 						fmt.Fprintln(os.Stderr, "warning: falling back to local exit logic")
@@ -432,7 +440,7 @@ func newScanCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noCacheFlag, "no-cache", false, "skip config cache (always pull fresh)")
 	cmd.Flags().StringVar(&targetFlag, "target", "", "override scan target identity")
 	cmd.Flags().StringVar(&triggerFlag, "trigger", "", "override trigger detection (ci or local)")
-	cmd.Flags().StringVar(&offlineBehavior, "offline-behavior", "warn", "behavior when upload fails: warn or fail-closed")
+	cmd.Flags().StringVar(&offlineBehavior, "offline-behavior", "", "behavior when upload fails: warn or fail-closed (auto: fail-closed in CI, warn locally)")
 	cmd.Flags().BoolVar(&noFloorFlag, "no-floor", false, "allow disabling critical floor rules")
 	_ = cmd.Flags().MarkHidden("no-floor")
 

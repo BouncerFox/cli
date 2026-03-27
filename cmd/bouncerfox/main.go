@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/bouncerfox/cli/pkg/auth"
 	"github.com/bouncerfox/cli/pkg/config"
 	"github.com/bouncerfox/cli/pkg/document"
 	"github.com/bouncerfox/cli/pkg/engine"
@@ -253,14 +254,10 @@ func newScanCmd() *cobra.Command {
 			if uploadFlag || dryRunUpload {
 				key := apiKey
 				if key == "" {
-					key = os.Getenv("BOUNCERFOX_API_KEY")
-				}
-				platformURL := os.Getenv("BOUNCERFOX_PLATFORM_URL")
-				if platformURL == "" {
-					platformURL = "https://api.bouncerfox.dev"
+					key = auth.ResolveAPIKey()
 				}
 				if err := upload.Upload(ctx, upload.UploadOptions{
-					PlatformURL: platformURL,
+					PlatformURL: auth.PlatformURL(),
 					APIKey:      key,
 					StripPaths:  stripPaths,
 					Anonymous:   anonymous,

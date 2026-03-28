@@ -27,7 +27,7 @@ func CheckPS004(doc *document.ConfigDocument, rc *document.RuleContext) []docume
 		doc,
 		"PS_004",
 		document.SeverityWarn,
-		"Hidden instruction in HTML comment",
+		"Long HTML comment (hidden when rendered)",
 		"Review HTML comments for hidden instructions and remove if suspicious.",
 		minLen,
 	)

@@ -44,7 +44,7 @@ func CheckCFG001(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 			return []document.ScanFinding{{
 				RuleID:   "CFG_001",
 				Severity: document.SeverityHigh,
-				Message:  "allowedTools grants 'Bash' with no restrictions",
+				Message:  "Unrestricted Bash in allowedTools",
 				Evidence: map[string]any{
 					"file":    doc.FilePath,
 					"line":    parser.FindJSONKeyLine(doc.Content, "allowedTools"),
@@ -75,7 +75,7 @@ func CheckCFG002(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 			return []document.ScanFinding{{
 				RuleID:   "CFG_002",
 				Severity: document.SeverityWarn,
-				Message:  "allowedTools contains 'Write' tool — grants unrestricted file write access",
+				Message:  "Unrestricted Write in allowedTools",
 				Evidence: map[string]any{
 					"file":    doc.FilePath,
 					"line":    parser.FindJSONKeyLine(doc.Content, "allowedTools"),
@@ -106,7 +106,7 @@ func CheckCFG003(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 			return []document.ScanFinding{{
 				RuleID:   "CFG_003",
 				Severity: document.SeverityHigh,
-				Message:  "allowedTools contains MCP wildcard pattern — grants broad MCP tool access",
+				Message:  "MCP wildcard in allowedTools",
 				Evidence: map[string]any{
 					"file":    doc.FilePath,
 					"line":    parser.FindJSONKeyLine(doc.Content, "allowedTools"),
@@ -154,7 +154,7 @@ func CheckCFG005(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 	return []document.ScanFinding{{
 		RuleID:   "CFG_005",
 		Severity: document.SeverityInfo,
-		Message:  fmt.Sprintf("allowedTools contains %d tools — consider reducing permissions", len(allowedTools)),
+		Message:  fmt.Sprintf("allowedTools has %d entries (>20)", len(allowedTools)),
 		Evidence: map[string]any{
 			"file":    doc.FilePath,
 			"line":    parser.FindJSONKeyLine(doc.Content, "allowedTools"),
@@ -175,7 +175,7 @@ func CheckCFG006(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 		return []document.ScanFinding{{
 			RuleID:   "CFG_006",
 			Severity: document.SeverityInfo,
-			Message:  "No 'deniedTools' key found — consider explicitly denying dangerous tools",
+			Message:  "No deniedTools defined",
 			Evidence: map[string]any{
 				"file":    doc.FilePath,
 				"line":    1,
@@ -189,7 +189,7 @@ func CheckCFG006(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 		return []document.ScanFinding{{
 			RuleID:   "CFG_006",
 			Severity: document.SeverityInfo,
-			Message:  "'deniedTools' is empty — consider explicitly denying dangerous tools",
+			Message:  "deniedTools is empty",
 			Evidence: map[string]any{
 				"file":    doc.FilePath,
 				"line":    parser.FindJSONKeyLine(doc.Content, "deniedTools"),

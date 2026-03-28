@@ -219,7 +219,7 @@ func CheckSEC001(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 				findings = append(findings, document.ScanFinding{
 					RuleID:   "SEC_001",
 					Severity: document.SeverityCritical,
-					Message:  "Secret-like token pattern detected",
+					Message:  "Hardcoded secret detected",
 					Evidence: map[string]any{
 						"file":    doc.FilePath,
 						"line":    lineNum,
@@ -261,7 +261,7 @@ func CheckSEC002(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 		findings = append(findings, document.ScanFinding{
 			RuleID:   "SEC_002",
 			Severity: document.SeverityHigh,
-			Message:  "External URL found that may not be in the org allowlist",
+			Message:  "External URL not in allowlist",
 			Evidence: map[string]any{
 				"file":    doc.FilePath,
 				"line":    lineNum,
@@ -339,7 +339,7 @@ func CheckSEC006(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 			findings = append(findings, document.ScanFinding{
 				RuleID:   "SEC_006",
 				Severity: document.SeverityWarn,
-				Message:  "Base64-encoded blob detected (possible encoded payload)",
+				Message:  "Base64-encoded blob detected",
 				Evidence: map[string]any{
 					"file":            doc.FilePath,
 					"line":            lineNum,
@@ -359,7 +359,7 @@ func CheckSEC007(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 		strings.Split(doc.Content, "\n"),
 		[]*regexp.Regexp{dataURIRe},
 		doc, "SEC_007", document.SeverityHigh,
-		"data: URI detected (possible encoded payload)",
+		"Data URI detected",
 		"Remove data: URIs — they can embed malicious payloads.",
 		getParsedIntBoolMap(doc, "content_code_block_lines"), 0,
 	)
@@ -787,7 +787,7 @@ func checkSEC018Markdown(doc *document.ConfigDocument, rc *document.RuleContext)
 				findings = append(findings, document.ScanFinding{
 					RuleID:   "SEC_018",
 					Severity: document.SeverityHigh,
-					Message:  "High-entropy string detected — possible hardcoded secret",
+					Message:  "High-entropy string detected",
 					Evidence: map[string]any{
 						"file":             doc.FilePath,
 						"line":             lineNum,
@@ -891,7 +891,7 @@ func checkSEC018JSON(doc *document.ConfigDocument, rc *document.RuleContext) []d
 				findings = append(findings, document.ScanFinding{
 					RuleID:   "SEC_018",
 					Severity: document.SeverityHigh,
-					Message:  fmt.Sprintf("High-entropy string in %s — possible hardcoded secret", entry.dotPath),
+					Message:  fmt.Sprintf("High-entropy string in %s", entry.dotPath),
 					Evidence: map[string]any{
 						"file":             doc.FilePath,
 						"line":             lineNum,

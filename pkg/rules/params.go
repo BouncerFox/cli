@@ -14,6 +14,8 @@ func DefaultRuleParams() map[string]map[string]any {
 				"127.0.0.1",
 				"npmjs.com",
 				"pypi.org",
+				"claude.com",
+				"anthropic.com",
 			},
 		},
 		"SEC_006": {"min_base64_length": 40},

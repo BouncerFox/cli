@@ -86,15 +86,20 @@ func NewHTTPClient(baseURL, apiKey string) *HTTPClient {
 }
 
 // ValidateHTTPS returns an error if the URL does not use HTTPS.
+// Localhost and 127.0.0.1 are exempt (safe for testing and local development).
 func ValidateHTTPS(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return fmt.Errorf("invalid platform URL %q: %w", rawURL, err)
 	}
-	if u.Scheme != "https" {
-		return fmt.Errorf("platform URL must use HTTPS (got %q)", rawURL)
+	if u.Scheme == "https" {
+		return nil
 	}
-	return nil
+	host := u.Hostname()
+	if host == "localhost" || host == "127.0.0.1" {
+		return nil
+	}
+	return fmt.Errorf("platform URL must use HTTPS (got %q)", rawURL)
 }
 
 func (c *HTTPClient) Upload(ctx context.Context, req UploadRequest) (*VerdictResponse, error) {

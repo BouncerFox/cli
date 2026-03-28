@@ -118,3 +118,26 @@ func TestValidateHTTPS_AcceptsHTTPS(t *testing.T) {
 		t.Fatalf("unexpected error for HTTPS: %v", err)
 	}
 }
+
+func TestValidateHTTPS_AllowsLocalhost(t *testing.T) {
+	for _, u := range []string{
+		"http://localhost:8080",
+		"http://127.0.0.1:9090",
+		"http://localhost",
+	} {
+		if err := ValidateHTTPS(u); err != nil {
+			t.Errorf("ValidateHTTPS(%q) should allow localhost, got: %v", u, err)
+		}
+	}
+}
+
+func TestValidateHTTPS_StillRejectsRemoteHTTP(t *testing.T) {
+	for _, u := range []string{
+		"http://example.com",
+		"http://api.bouncerfox.dev",
+	} {
+		if err := ValidateHTTPS(u); err == nil {
+			t.Errorf("ValidateHTTPS(%q) should reject remote HTTP", u)
+		}
+	}
+}

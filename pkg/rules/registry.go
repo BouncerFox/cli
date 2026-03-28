@@ -11,13 +11,43 @@ var allFileTypes = []string{
 	document.FileTypeAgentMD,
 	document.FileTypeSettingsJSON,
 	document.FileTypeMCPJSON,
+	document.FileTypeRulesMD,
+	document.FileTypePluginJSON,
+	document.FileTypeHooksJSON,
+	document.FileTypeLSPJSON,
+	document.FileTypeCursorRules,
+	document.FileTypeWindsurfRules,
+	document.FileTypeCopilotMD,
+	document.FileTypeAgentsMD,
 }
 
-// mdFileTypes lists the three markdown file types.
+// mdFileTypes lists all markdown-based file types.
 var mdFileTypes = []string{
 	document.FileTypeSkillMD,
 	document.FileTypeClaudeMD,
 	document.FileTypeAgentMD,
+	document.FileTypeRulesMD,
+	document.FileTypeCursorRules,
+	document.FileTypeWindsurfRules,
+	document.FileTypeCopilotMD,
+	document.FileTypeAgentsMD,
+}
+
+// jsonFileTypes lists all JSON-based file types.
+var jsonFileTypes = []string{
+	document.FileTypeSettingsJSON,
+	document.FileTypeMCPJSON,
+	document.FileTypePluginJSON,
+	document.FileTypeHooksJSON,
+	document.FileTypeLSPJSON,
+}
+
+// execFileTypes lists JSON file types that contain executable commands.
+var execFileTypes = []string{
+	document.FileTypeSettingsJSON,
+	document.FileTypeMCPJSON,
+	document.FileTypeHooksJSON,
+	document.FileTypeLSPJSON,
 }
 
 // Registry is an ordered slice of all rules. SEC_001 must appear first so
@@ -91,7 +121,7 @@ var Registry = []document.RuleMetadata{
 		Description:      "Hook command opens a reverse shell connection",
 		Remediation:      "Remove the reverse shell command from hook configuration.",
 		DefaultSeverity:  document.SeverityCritical,
-		DefaultFileTypes: []string{document.FileTypeSettingsJSON},
+		DefaultFileTypes: execFileTypes,
 		Check:            CheckSEC009,
 	},
 	{
@@ -101,7 +131,7 @@ var Registry = []document.RuleMetadata{
 		Description:      "Hook command accesses and exfiltrates environment variables or credentials",
 		Remediation:      "Remove credential access from hook commands.",
 		DefaultSeverity:  document.SeverityCritical,
-		DefaultFileTypes: []string{document.FileTypeSettingsJSON},
+		DefaultFileTypes: execFileTypes,
 		Check:            CheckSEC010,
 	},
 	{
@@ -111,7 +141,7 @@ var Registry = []document.RuleMetadata{
 		Description:      "Command downloads and immediately executes remote content",
 		Remediation:      "Remove download-and-execute patterns from commands.",
 		DefaultSeverity:  document.SeverityCritical,
-		DefaultFileTypes: []string{document.FileTypeSettingsJSON, document.FileTypeMCPJSON},
+		DefaultFileTypes: execFileTypes,
 		Check:            CheckSEC011,
 	},
 	{
@@ -121,7 +151,7 @@ var Registry = []document.RuleMetadata{
 		Description:      "Environment variable override that can hijack proxy, path, or library loading",
 		Remediation:      "Remove dangerous environment variable overrides.",
 		DefaultSeverity:  document.SeverityHigh,
-		DefaultFileTypes: []string{document.FileTypeSettingsJSON},
+		DefaultFileTypes: execFileTypes,
 		Check:            CheckSEC012,
 	},
 	{
@@ -131,7 +161,7 @@ var Registry = []document.RuleMetadata{
 		Description:      "MCP server uses an unpinned package version, introducing supply chain risk",
 		Remediation:      "Pin the MCP package to a specific version.",
 		DefaultSeverity:  document.SeverityHigh,
-		DefaultFileTypes: []string{document.FileTypeMCPJSON},
+		DefaultFileTypes: []string{document.FileTypeMCPJSON, document.FileTypeLSPJSON},
 		Check:            CheckSEC014,
 	},
 	{
@@ -161,7 +191,7 @@ var Registry = []document.RuleMetadata{
 		Description:      "YAML anchor or alias in frontmatter — potential YAML bomb",
 		Remediation:      "Remove YAML anchors (&) and aliases (*) from frontmatter.",
 		DefaultSeverity:  document.SeverityHigh,
-		DefaultFileTypes: []string{document.FileTypeSkillMD, document.FileTypeAgentMD},
+		DefaultFileTypes: []string{document.FileTypeSkillMD, document.FileTypeAgentMD, document.FileTypeRulesMD},
 		Check:            CheckSEC019,
 	},
 	{
@@ -171,7 +201,7 @@ var Registry = []document.RuleMetadata{
 		Description:      "JSON nesting exceeds maximum depth — possible resource exhaustion",
 		Remediation:      "Reduce JSON nesting depth to 10 levels or fewer.",
 		DefaultSeverity:  document.SeverityHigh,
-		DefaultFileTypes: []string{document.FileTypeSettingsJSON, document.FileTypeMCPJSON},
+		DefaultFileTypes: jsonFileTypes,
 		Check:            CheckSEC020,
 	},
 	// ── Quality ─────────────────────────────────────────────────────────
@@ -313,7 +343,7 @@ var Registry = []document.RuleMetadata{
 		Description:      "Hook command contains shell metacharacters that risk injection",
 		Remediation:      "Avoid shell metacharacters in hook commands; use explicit argument lists.",
 		DefaultSeverity:  document.SeverityHigh,
-		DefaultFileTypes: []string{document.FileTypeSettingsJSON},
+		DefaultFileTypes: execFileTypes,
 		Check:            CheckCFG004,
 	},
 	{
@@ -343,7 +373,7 @@ var Registry = []document.RuleMetadata{
 		Description:      "MCP server or hook uses broad permission flags like --allow-all or --no-sandbox",
 		Remediation:      "Remove broad permission flags and grant specific permissions only.",
 		DefaultSeverity:  document.SeverityHigh,
-		DefaultFileTypes: []string{document.FileTypeSettingsJSON, document.FileTypeMCPJSON},
+		DefaultFileTypes: []string{document.FileTypeSettingsJSON, document.FileTypeMCPJSON, document.FileTypeHooksJSON, document.FileTypeLSPJSON},
 		Check:            CheckCFG009,
 	},
 	// ── Prompt Safety ───────────────────────────────────────────────────

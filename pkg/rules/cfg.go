@@ -25,6 +25,8 @@ var permissiveFlagRe = regexp.MustCompile(
 	`(?i)--(allow-all|no-sandbox|disable-security|trust-all|unsafe|no-verify|skip-validation|privileged)\b|\s-A(?:\s|$)`,
 )
 
+var permissiveFlagPatterns = []*regexp.Regexp{permissiveFlagRe}
+
 // CheckCFG001 checks for unrestricted bash tool in allowedTools.
 func CheckCFG001(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
@@ -120,31 +122,22 @@ func CheckCFG003(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 
 // CheckCFG004 checks hook commands for shell injection patterns.
 func CheckCFG004(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
-	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
+	if hasParseError(doc) {
 		return nil
 	}
-
-	var findings []document.ScanFinding
-	for _, hc := range ExtractHookCommands(doc.Parsed) {
-		for _, pat := range hookInjectionPatterns {
-			if pat.MatchString(hc.Command) {
-				findings = append(findings, document.ScanFinding{
-					RuleID:   "CFG_004",
-					Severity: document.SeverityHigh,
-					Message:  fmt.Sprintf("Hook '%s' contains shell injection risk pattern", hc.Name),
-					Evidence: map[string]any{
-						"file":    doc.FilePath,
-						"line":    parser.FindJSONKeyLine(doc.Content, hc.Name),
-						"snippet": truncSnippet(hc.Command, 100),
-					},
-					Remediation: "Avoid shell metacharacters in hook commands; use explicit argument lists.",
-				})
-				break
-			}
-		}
+	switch doc.FileType {
+	case document.FileTypeSettingsJSON, document.FileTypeHooksJSON:
+		return checkCommandPatterns(doc, ExtractHookCommands(doc.Parsed), hookInjectionPatterns,
+			"CFG_004", document.SeverityHigh,
+			"Hook '%s' contains shell injection risk pattern",
+			"Avoid shell metacharacters in hook commands; use explicit argument lists.")
+	case document.FileTypeLSPJSON:
+		return checkCommandPatterns(doc, ExtractLSPCommands(doc), hookInjectionPatterns,
+			"CFG_004", document.SeverityHigh,
+			"LSP server '%s' contains shell injection risk pattern",
+			"Avoid shell metacharacters in LSP server commands; use explicit argument lists.")
 	}
-
-	return findings
+	return nil
 }
 
 // CheckCFG005 checks if there are too many allowed tools (> 20).
@@ -215,27 +208,14 @@ func CheckCFG009(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 		return nil
 	}
 
-	var findings []document.ScanFinding
-
 	switch doc.FileType {
-	case document.FileTypeSettingsJSON:
-		for _, hc := range ExtractHookCommands(doc.Parsed) {
-			if permissiveFlagRe.MatchString(hc.Command) {
-				findings = append(findings, document.ScanFinding{
-					RuleID:   "CFG_009",
-					Severity: document.SeverityHigh,
-					Message:  fmt.Sprintf("Hook '%s' uses a permissive/unsafe flag", hc.Name),
-					Evidence: map[string]any{
-						"file":    doc.FilePath,
-						"line":    parser.FindJSONKeyLine(doc.Content, hc.Name),
-						"snippet": truncSnippet(hc.Command, 100),
-					},
-					Remediation: "Remove broad permission flags and grant specific permissions only.",
-				})
-			}
-		}
-
+	case document.FileTypeSettingsJSON, document.FileTypeHooksJSON:
+		return checkCommandPatterns(doc, ExtractHookCommands(doc.Parsed), permissiveFlagPatterns,
+			"CFG_009", document.SeverityHigh,
+			"Hook '%s' uses a permissive/unsafe flag",
+			"Remove broad permission flags and grant specific permissions only.")
 	case document.FileTypeMCPJSON:
+		var findings []document.ScanFinding
 		for _, srv := range IterMCPServers(doc.Parsed) {
 			fullCmd := BuildMCPCommand(srv.Config)
 			if permissiveFlagRe.MatchString(fullCmd) {
@@ -252,7 +232,13 @@ func CheckCFG009(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 				})
 			}
 		}
+		return findings
+	case document.FileTypeLSPJSON:
+		return checkCommandPatterns(doc, ExtractLSPCommands(doc), permissiveFlagPatterns,
+			"CFG_009", document.SeverityHigh,
+			"LSP server '%s' uses a permissive/unsafe flag",
+			"Remove broad permission flags and grant specific permissions only.")
 	}
 
-	return findings
+	return nil
 }

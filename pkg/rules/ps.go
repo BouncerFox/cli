@@ -7,7 +7,9 @@ import (
 // CheckPS004 detects hidden instructions in HTML comments in markdown files.
 func CheckPS004(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	switch doc.FileType {
-	case document.FileTypeSkillMD, document.FileTypeClaudeMD, document.FileTypeAgentMD:
+	case document.FileTypeSkillMD, document.FileTypeClaudeMD, document.FileTypeAgentMD,
+		document.FileTypeRulesMD, document.FileTypeCursorRules, document.FileTypeWindsurfRules,
+		document.FileTypeCopilotMD, document.FileTypeAgentsMD:
 		// applicable
 	default:
 		return nil

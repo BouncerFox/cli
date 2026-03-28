@@ -80,6 +80,8 @@ func newScanCmd() *cobra.Command {
 		triggerFlag     string
 		offlineBehavior string
 		noFloorFlag     bool
+		verboseFlag     bool
+		noColorFlag     bool
 	)
 
 	cmd := &cobra.Command{
@@ -187,6 +189,7 @@ func newScanCmd() *cobra.Command {
 			// Collect governed files.
 			var docs []*document.ConfigDocument
 			fileCount := 0
+			skippedCount := 0
 			for _, root := range paths {
 				// Resolve the scan root to an absolute path for containment checks.
 				absRoot, err := filepath.Abs(root)
@@ -227,6 +230,7 @@ func newScanCmd() *cobra.Command {
 					rel, err := filepath.Rel(absRoot, absReal)
 					if err != nil || rel == ".." || (len(rel) >= 3 && rel[:3] == "../") {
 						fmt.Fprintf(os.Stderr, "warning: skipping %s: resolves outside scan root\n", path)
+						skippedCount++
 						return nil
 					}
 
@@ -258,6 +262,7 @@ func newScanCmd() *cobra.Command {
 					}
 					if info.Size() > maxFileSize {
 						fmt.Fprintf(os.Stderr, "warning: skipping %s: file too large (%d bytes)\n", path, info.Size())
+						skippedCount++
 						return nil
 					}
 
@@ -308,7 +313,19 @@ func newScanCmd() *cobra.Command {
 					return fmt.Errorf("formatting output: %w", err)
 				}
 			default: // "table" or empty
-				if err := output.FormatTable(result.Findings, os.Stdout); err != nil {
+				fmtOpts := output.FormatOptions{
+					Verbose:  verboseFlag,
+					NoColor:  noColorFlag,
+					IsTTY:    output.IsTerminalStdout(),
+					ScanRoot: absRootFirst,
+					Stats: output.ScanStats{
+						FilesScanned: result.FilesScanned,
+						RulesRun:     result.RulesRun,
+						Skipped:      skippedCount,
+						Duration:     scanDuration,
+					},
+				}
+				if err := output.FormatTable(result.Findings, os.Stdout, fmtOpts); err != nil {
 					return fmt.Errorf("formatting output: %w", err)
 				}
 			}
@@ -457,6 +474,8 @@ func newScanCmd() *cobra.Command {
 	cmd.Flags().StringVar(&offlineBehavior, "offline-behavior", "", "behavior when upload fails: warn or fail-closed (auto: fail-closed in CI, warn locally)")
 	cmd.Flags().BoolVar(&noFloorFlag, "no-floor", false, "allow disabling critical floor rules")
 	_ = cmd.Flags().MarkHidden("no-floor")
+	cmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "show code frames with surrounding context")
+	cmd.Flags().BoolVar(&noColorFlag, "no-color", false, "disable colors and unicode symbols")
 
 	return cmd
 }

@@ -168,16 +168,18 @@ func getURLAllowlist(rc *document.RuleContext) []string {
 	return nil
 }
 
-// checkHookPatterns matches hook commands against regex patterns, returning findings.
-func checkHookPatterns(
+// checkCommandPatterns matches a slice of named commands against regex patterns,
+// emitting one finding per command (first matching pattern wins).
+func checkCommandPatterns(
 	doc *document.ConfigDocument,
+	commands []HookCommand,
 	patterns []*regexp.Regexp,
 	ruleID string,
 	severity document.FindingSeverity,
 	messageFmt, remediation string,
 ) []document.ScanFinding {
 	var findings []document.ScanFinding
-	for _, hc := range ExtractHookCommands(doc.Parsed) {
+	for _, hc := range commands {
 		for _, pat := range patterns {
 			if pat.MatchString(hc.Command) {
 				findings = append(findings, document.ScanFinding{
@@ -363,33 +365,50 @@ func CheckSEC007(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 	)
 }
 
-// CheckSEC009 detects reverse shell patterns in settings_json hook commands.
+// CheckSEC009 detects reverse shell patterns in settings_json/hooks_json hook commands
+// and lsp_json server commands.
 func CheckSEC009(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
-	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
+	if hasParseError(doc) {
 		return nil
 	}
-	return checkHookPatterns(doc, reverseShellPatterns, "SEC_009", document.SeverityCritical,
-		"Hook '%s' contains reverse shell pattern", "Remove reverse shell commands from hooks.")
+	switch doc.FileType {
+	case document.FileTypeSettingsJSON, document.FileTypeHooksJSON:
+		return checkCommandPatterns(doc, ExtractHookCommands(doc.Parsed), reverseShellPatterns, "SEC_009", document.SeverityCritical,
+			"Hook '%s' contains reverse shell pattern", "Remove reverse shell commands from hooks.")
+	case document.FileTypeLSPJSON:
+		return checkCommandPatterns(doc, ExtractLSPCommands(doc), reverseShellPatterns, "SEC_009", document.SeverityCritical,
+			"LSP server '%s' contains reverse shell pattern", "Remove reverse shell commands from LSP server config.")
+	}
+	return nil
 }
 
-// CheckSEC010 detects credential exfiltration patterns in settings_json hook commands.
+// CheckSEC010 detects credential exfiltration patterns in settings_json/hooks_json hook commands
+// and lsp_json server commands.
 func CheckSEC010(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
-	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
+	if hasParseError(doc) {
 		return nil
 	}
-	return checkHookPatterns(doc, envExfiltrationPatterns, "SEC_010", document.SeverityCritical,
-		"Hook '%s' exfiltrates environment variables or credentials", "Remove credential exfiltration from hooks.")
+	switch doc.FileType {
+	case document.FileTypeSettingsJSON, document.FileTypeHooksJSON:
+		return checkCommandPatterns(doc, ExtractHookCommands(doc.Parsed), envExfiltrationPatterns, "SEC_010", document.SeverityCritical,
+			"Hook '%s' exfiltrates environment variables or credentials", "Remove credential exfiltration from hooks.")
+	case document.FileTypeLSPJSON:
+		return checkCommandPatterns(doc, ExtractLSPCommands(doc), envExfiltrationPatterns, "SEC_010", document.SeverityCritical,
+			"LSP server '%s' exfiltrates environment variables or credentials", "Remove credential exfiltration from LSP server config.")
+	}
+	return nil
 }
 
-// CheckSEC011 detects download-and-execute patterns in settings_json hooks and mcp_json servers.
+// CheckSEC011 detects download-and-execute patterns in settings_json/hooks_json hooks,
+// mcp_json servers, and lsp_json server commands.
 func CheckSEC011(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if hasParseError(doc) {
 		return nil
 	}
 
 	switch doc.FileType {
-	case document.FileTypeSettingsJSON:
-		return checkHookPatterns(doc, downloadExecPatterns, "SEC_011", document.SeverityCritical,
+	case document.FileTypeSettingsJSON, document.FileTypeHooksJSON:
+		return checkCommandPatterns(doc, ExtractHookCommands(doc.Parsed), downloadExecPatterns, "SEC_011", document.SeverityCritical,
 			"Hook '%s' downloads and executes remote content", "Do not download and execute remote code in hooks.")
 
 	case document.FileTypeMCPJSON:
@@ -414,22 +433,37 @@ func CheckSEC011(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 			}
 		}
 		return findings
+
+	case document.FileTypeLSPJSON:
+		return checkCommandPatterns(doc, ExtractLSPCommands(doc), downloadExecPatterns, "SEC_011", document.SeverityCritical,
+			"LSP server '%s' downloads and executes remote content", "Do not download and execute remote code in LSP server config.")
 	}
 
 	return nil
 }
 
-// CheckSEC012 detects dangerous environment variable overrides in settings_json.
+// CheckSEC012 detects dangerous environment variable overrides in settings_json,
+// hooks_json hook entries, and lsp_json server entries.
 func CheckSEC012(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
-	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
+	if hasParseError(doc) {
 		return nil
 	}
+	switch doc.FileType {
+	case document.FileTypeSettingsJSON:
+		return checkEnvBlock(doc, doc.Parsed)
+	case document.FileTypeHooksJSON:
+		return checkHookEnvVars(doc)
+	case document.FileTypeLSPJSON:
+		return checkLSPEnvVars(doc)
+	}
+	return nil
+}
 
-	envBlock, ok := doc.Parsed["env"].(map[string]any)
+func checkEnvBlock(doc *document.ConfigDocument, parsed map[string]any) []document.ScanFinding {
+	envBlock, ok := parsed["env"].(map[string]any)
 	if !ok {
 		return nil
 	}
-
 	var findings []document.ScanFinding
 	for envKey, envVal := range envBlock {
 		if dangerousEnvVars[strings.ToUpper(envKey)] {
@@ -450,37 +484,91 @@ func CheckSEC012(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 	return findings
 }
 
-// CheckSEC014 detects unpinned MCP package versions in mcp_json.
-func CheckSEC014(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
-	if doc.FileType != document.FileTypeMCPJSON || hasParseError(doc) {
+func checkHookEnvVars(doc *document.ConfigDocument) []document.ScanFinding {
+	hooks, ok := doc.Parsed["hooks"]
+	if !ok {
 		return nil
 	}
+	hooksMap, ok := hooks.(map[string]any)
+	if !ok {
+		return nil
+	}
+	var findings []document.ScanFinding
+	for _, hookConfig := range hooksMap {
+		items, ok := hookConfig.([]any)
+		if !ok {
+			continue
+		}
+		for _, item := range items {
+			entry, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			findings = append(findings, checkEnvBlock(doc, entry)...)
+		}
+	}
+	return findings
+}
 
+func checkLSPEnvVars(doc *document.ConfigDocument) []document.ScanFinding {
+	var findings []document.ScanFinding
+	for _, v := range doc.Parsed {
+		entry, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		findings = append(findings, checkEnvBlock(doc, entry)...)
+	}
+	return findings
+}
+
+// CheckSEC014 detects unpinned package versions in mcp_json and lsp_json.
+func CheckSEC014(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
+	if hasParseError(doc) {
+		return nil
+	}
+	switch doc.FileType {
+	case document.FileTypeMCPJSON:
+		return checkSEC014MCP(doc)
+	case document.FileTypeLSPJSON:
+		return checkSEC014LSP(doc)
+	}
+	return nil
+}
+
+// isVersionPinned returns true if any arg contains a semver pin after "@",
+// or if the full command string contains a "--version" flag.
+func isVersionPinned(args []string, fullCmd string) bool {
+	if strings.Contains(fullCmd, "--version") {
+		return true
+	}
+	for _, arg := range args {
+		if idx := strings.LastIndex(arg, "@"); idx >= 0 {
+			if versionPinRe.MatchString(arg[idx+1:]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func checkSEC014MCP(doc *document.ConfigDocument) []document.ScanFinding {
 	var findings []document.ScanFinding
 	for _, srv := range IterMCPServers(doc.Parsed) {
 		command, _ := srv.Config["command"].(string)
 		if command != "npx" && command != "bunx" && command != "uvx" && command != "pipx" {
 			continue
 		}
-
 		args, _ := srv.Config["args"].([]any)
 		if len(args) == 0 {
 			continue
 		}
-
 		fullCmd := BuildMCPCommand(srv.Config)
-		hasVersionPin := strings.Contains(fullCmd, "--version")
-		for _, arg := range args {
-			argStr := asString(arg)
-			if idx := strings.LastIndex(argStr, "@"); idx >= 0 {
-				if versionPinRe.MatchString(argStr[idx+1:]) {
-					hasVersionPin = true
-					break
-				}
-			}
+		strArgs := make([]string, len(args))
+		for i, a := range args {
+			strArgs[i] = asString(a)
 		}
-
-		if !hasVersionPin {
+		if !isVersionPinned(strArgs, fullCmd) {
 			findings = append(findings, document.ScanFinding{
 				RuleID:   "SEC_014",
 				Severity: document.SeverityHigh,
@@ -489,6 +577,34 @@ func CheckSEC014(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 					"file":    doc.FilePath,
 					"line":    parser.FindJSONKeyLine(doc.Content, srv.Name),
 					"snippet": truncSnippet(fullCmd, 100),
+				},
+				Remediation: "Pin the package version (e.g., package@1.2.3).",
+			})
+		}
+	}
+	return findings
+}
+
+func checkSEC014LSP(doc *document.ConfigDocument) []document.ScanFinding {
+	var findings []document.ScanFinding
+	for _, lc := range ExtractLSPCommands(doc) {
+		parts := strings.Fields(lc.Command)
+		if len(parts) < 2 {
+			continue
+		}
+		command := parts[0]
+		if command != "npx" && command != "bunx" && command != "uvx" && command != "pipx" {
+			continue
+		}
+		if !isVersionPinned(parts[1:], lc.Command) {
+			findings = append(findings, document.ScanFinding{
+				RuleID:   "SEC_014",
+				Severity: document.SeverityHigh,
+				Message:  fmt.Sprintf("LSP server '%s' uses unpinned package version", lc.Name),
+				Evidence: map[string]any{
+					"file":    doc.FilePath,
+					"line":    parser.FindJSONKeyLine(doc.Content, lc.Name),
+					"snippet": truncSnippet(lc.Command, 100),
 				},
 				Remediation: "Pin the package version (e.g., package@1.2.3).",
 			})
@@ -608,9 +724,12 @@ const sec018Remediation = "If this is a secret, remove it and use environment va
 // For JSON files it walks the parsed document recursively.
 func CheckSEC018(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	switch doc.FileType {
-	case document.FileTypeSkillMD, document.FileTypeClaudeMD, document.FileTypeAgentMD:
+	case document.FileTypeSkillMD, document.FileTypeClaudeMD, document.FileTypeAgentMD,
+		document.FileTypeRulesMD, document.FileTypeCursorRules, document.FileTypeWindsurfRules,
+		document.FileTypeCopilotMD, document.FileTypeAgentsMD:
 		return checkSEC018Markdown(doc, rc)
-	case document.FileTypeSettingsJSON, document.FileTypeMCPJSON:
+	case document.FileTypeSettingsJSON, document.FileTypeMCPJSON,
+		document.FileTypePluginJSON, document.FileTypeHooksJSON, document.FileTypeLSPJSON:
 		return checkSEC018JSON(doc, rc)
 	}
 	return nil

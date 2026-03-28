@@ -30,19 +30,22 @@ Releases also ship standalone binaries for Linux, macOS, and Windows via
 ## Quick Start
 
 ```bash
-# Scan the current directory (table output)
+# Scan the current directory
 bouncerfox scan .
 
-# JSON output (machine-readable, pipe to jq)
+# Only show high-severity and above
+bouncerfox scan . --severity high
+
+# JSON output (pipe to jq, CI scripts)
 bouncerfox scan . --format json
 
 # SARIF output (VS Code / GitHub Code Scanning)
 bouncerfox scan . --format sarif
 
-# List all rules
+# List all built-in rules
 bouncerfox rules
 
-# Generate a default .bouncerfox.yml
+# Generate a starter .bouncerfox.yml
 bouncerfox init
 ```
 
@@ -52,7 +55,7 @@ bouncerfox init
 |---|---|
 | `0` | No findings at or above the severity threshold |
 | `1` | One or more findings found |
-| `2` | Scanner error |
+| `2` | Scanner error (or platform unreachable in fail-closed mode) |
 
 ## Rules
 
@@ -105,6 +108,11 @@ rules:
 
 CLI flags override config file values. Config file overrides profile defaults.
 
+**Profiles:** `recommended` (default) disables some informational rules for a quieter baseline.
+`all_rules` enables every rule. Per-rule overrides in `rules:` are applied on top of the profile.
+
+**Severity floors:** Critical rules (`SEC_001`, `SEC_003`, `SEC_004`) cannot be downgraded below HIGH.
+
 ## Custom Rules
 
 Define project-specific rules in `.bouncerfox.yml` without writing Go:
@@ -140,7 +148,9 @@ custom_rules:
 
 All custom rule patterns use RE2 regex (no lookaheads or backreferences).
 
-## GitHub Action
+## CI / GitHub Actions
+
+### Basic scan
 
 ```yaml
 # .github/workflows/bouncerfox.yml
@@ -159,7 +169,7 @@ jobs:
           severity: warn
 ```
 
-For SARIF upload to GitHub Code Scanning, add:
+### SARIF upload to GitHub Code Scanning
 
 ```yaml
       - uses: github/codeql-action/upload-sarif@v3
@@ -167,53 +177,143 @@ For SARIF upload to GitHub Code Scanning, add:
           sarif_file: results.sarif
 ```
 
-## CLI Flags
+### PR comments and check runs
+
+Post findings directly on a pull request and as a GitHub check run with inline annotations:
+
+```yaml
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          bouncerfox scan . --github-comment --pr-number ${{ github.event.pull_request.number }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
+`--github-comment` requires the `GITHUB_TOKEN` environment variable. The PR number is
+auto-detected from the GitHub event payload when `--pr-number` is not set. If a commit SHA
+is available, a check run with per-file annotations is also posted.
+
+### Connected mode (platform integration)
+
+When `BOUNCERFOX_API_KEY` is set, the CLI automatically enters connected mode:
+pulls org-level rule config before scanning, uploads findings after, and uses the
+platform's verdict for the exit code.
+
+```yaml
+    steps:
+      - uses: actions/checkout@v4
+      - run: bouncerfox scan .
+        env:
+          BOUNCERFOX_API_KEY: ${{ secrets.BOUNCERFOX_API_KEY }}
+```
+
+If the platform is unreachable in CI, the default behavior is **fail-closed** (exit 2).
+Override with `--offline-behavior warn` to fall back to local exit logic.
+
+## CLI Reference
 
 ### `bouncerfox scan [paths...]`
+
+Scan files for security and quality issues. Defaults to scanning the current directory.
 
 | Flag | Short | Default | Description |
 |---|---|---|---|
 | `--format` | `-f` | `table` | Output format: `table`, `json`, `sarif` |
-| `--severity` | `-s` | `` | Severity floor override: `critical`, `high`, `warn`, `info` |
-| `--config` | `-c` | `` | Config file path (overrides auto-discovery) |
-| `--max-findings` | | `0` | Cap total findings returned (0 = unlimited) |
+| `--severity` | `-s` | | Severity floor: `critical`, `high`, `warn`, `info` |
+| `--config` | `-c` | | Config file path (overrides auto-discovery) |
+| `--max-findings` | | `0` | Cap total findings (0 = unlimited) |
+| `--github-comment` | | `false` | Post findings as PR comment and check run |
+| `--pr-number` | | `0` | PR number for GitHub comment (auto-detected in CI) |
+| `--target` | | | Override scan target identity |
+| `--trigger` | | | Override trigger detection: `ci` or `local` |
+| `--offline-behavior` | | | When upload fails: `warn` or `fail-closed` (auto: fail-closed in CI, warn locally) |
+| `--dry-run-upload` | | `false` | Preview upload payload without sending |
+| `--strip-paths` | | `false` | Send filenames only (no full paths) in upload |
+| `--anonymous` | | `false` | Strip all identifying info from upload |
+| `--no-cache` | | `false` | Skip config cache (always pull fresh) |
 
 ### `bouncerfox rules`
 
-Lists all registered rules with ID, severity, category, and description.
+List all registered rules with ID, severity, category, and description.
 
 ### `bouncerfox init`
 
-Writes a default `.bouncerfox.yml` to the current directory.
+Generate a default `.bouncerfox.yml` in the current directory. Fails if one already exists.
 
-## Platform Integration (optional)
+### `bouncerfox auth`
+
+Authenticate with the BouncerFox platform. Opens a browser to obtain an API key and
+saves it to `~/.config/bouncerfox/credentials`.
+
+### `bouncerfox config refresh`
+
+Clear the cached platform config. Useful when org-level rules have changed and you want
+to pull fresh config on the next scan.
+
+## Environment Variables
+
+| Variable | Description |
+|---|---|
+| `BOUNCERFOX_API_KEY` | Platform API key — enables connected mode (config pull + upload + verdict) |
+| `BOUNCERFOX_PLATFORM_URL` | Platform API base URL (default: `https://api.bouncerfox.dev`) |
+| `BOUNCERFOX_CONFIG_DIR` | Config directory override (default: `~/.config/bouncerfox`) |
+| `BOUNCERFOX_TARGET` | Override scan target identity |
+| `GITHUB_TOKEN` | Required for `--github-comment` (PR comments and check runs) |
+
+CI environment variables (`GITHUB_ACTIONS`, `CI`, `GITHUB_SHA`, `GITHUB_REF_NAME`,
+`GITHUB_REPOSITORY`, `GITHUB_EVENT_PATH`) are auto-detected when running in GitHub Actions.
+
+## Platform Integration
 
 The BouncerFox platform adds governance workflows on top of the CLI scanner:
 approval flows, enforcement policies, compliance exports, and cross-repo analytics.
 
+**Connected mode** activates automatically when `BOUNCERFOX_API_KEY` is set (via env var
+or `bouncerfox auth`). In connected mode the CLI:
+
+1. Pulls org-level rule config from the platform (cached locally with ETag validation)
+2. Runs the scan with merged config (platform config takes priority over local)
+3. Uploads findings to the platform
+4. Uses the platform's verdict for the exit code
+
+**What gets sent:** rule IDs, severities, file paths, line numbers, fingerprints, scan metadata.
+**Never sent:** file contents, code snippets, matched secret values, environment variables.
+
 ```bash
-# Upload findings to the platform (opt-in)
-bouncerfox scan . --upload --api-key bf_xxx
+# Authenticate (saves API key locally)
+bouncerfox auth
 
-# Download org rule config from the platform
-bouncerfox scan . --pull-config --api-key bf_xxx
+# Scan — connected mode activates automatically
+bouncerfox scan .
+
+# Preview what would be uploaded
+bouncerfox scan . --dry-run-upload
+
+# Strip full paths from upload payload
+bouncerfox scan . --strip-paths
+
+# Fully anonymous upload (no target, commit, or branch info)
+bouncerfox scan . --anonymous
+
+# Force fresh config pull (skip cache)
+bouncerfox scan . --no-cache
+
+# Clear cached config
+bouncerfox config refresh
 ```
-
-What gets sent with `--upload`: rule IDs, severities, file paths, line numbers,
-fingerprints, scan metadata. What is **never** sent: file contents, code snippets,
-matched secret values, environment variables.
 
 Set the API key via environment variable to avoid it appearing in shell history:
 
 ```bash
 export BOUNCERFOX_API_KEY=bf_xxx
-bouncerfox scan . --upload
+bouncerfox scan .
 ```
 
-## Security Notes
+## Security
 
-- No network calls by default — fully offline unless `--upload` or `--pull-config` is used
-- Max file size: 1 MB per file; max file count: 500 per scan; scan timeout: 5 minutes
+- **Offline by default** — no network calls unless `BOUNCERFOX_API_KEY` is set or `--github-comment` is used
+- Max file size: 1 MB; max file count: 500; scan timeout: 5 minutes
 - Symlinks pointing outside the scan root are rejected
 - Custom rule regex uses RE2 — no ReDoS risk
 - Signed binaries with SLSA provenance attestation; verify with `gh attestation verify`

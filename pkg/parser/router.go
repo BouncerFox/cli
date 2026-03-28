@@ -54,6 +54,8 @@ var routeTable = []route{
 	{regexp.MustCompile(`(^|/)\.windsurfrules$`), document.FileTypeWindsurfRules, mdParser(document.FileTypeWindsurfRules)},
 	{regexp.MustCompile(`\.github/copilot-instructions\.md$`), document.FileTypeCopilotMD, mdParser(document.FileTypeCopilotMD)},
 	{regexp.MustCompile(`(^|/)AGENTS\.md$`), document.FileTypeAgentsMD, mdParser(document.FileTypeAgentsMD)},
+	// Filename-only fallbacks for unique names not caught by path-specific routes above
+	{regexp.MustCompile(`(^|/)SKILL\.md$`), document.FileTypeSkillMD, fmParser(document.FileTypeSkillMD)},
 }
 
 func validateFilePath(path string) bool {

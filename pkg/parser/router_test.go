@@ -39,6 +39,9 @@ func TestIsGovernedFile(t *testing.T) {
 		{"AGENTS.md", true},
 		{"sub/AGENTS.md", true},
 		{".github/copilot-instructions.md", true},
+		// Filename-only fallbacks
+		{"SKILL.md", true},
+		{"sub/SKILL.md", true},
 		// Negative cases
 		{".claude/rules/.md", false},
 		{"hooks.json", false},
@@ -210,6 +213,18 @@ func TestRouteAndParse(t *testing.T) {
 			".github/copilot-instructions.md",
 			"# Copilot Instructions",
 			"copilot_md",
+			false,
+		},
+		{
+			"SKILL.md",
+			"---\nname: test\n---\nbody",
+			"skill_md",
+			false,
+		},
+		{
+			"sub/SKILL.md",
+			"---\nname: test\n---\nbody",
+			"skill_md",
 			false,
 		},
 	}

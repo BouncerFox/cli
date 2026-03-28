@@ -375,9 +375,10 @@ var floorRules = map[string]bool{
 var recommendedDisabled = map[string]bool{
 	"QA_001":  true,
 	"QA_003":  true,
+	"QA_006":  true,
 	"QA_008":  true,
 	"SEC_006": true,
-	"CFG_007": true,
+	"CFG_006": true,
 	"CFG_009": true,
 }
 

@@ -189,6 +189,7 @@ rules:
 
 // TestLoadConfig_IgnorePatterns parses the ignore list.
 func TestLoadConfig_IgnorePatterns(t *testing.T) {
+	t.Setenv("BOUNCERFOX_CONFIG_DIR", t.TempDir())
 	yaml := `
 ignore:
   - "vendor/**"
@@ -212,6 +213,7 @@ ignore:
 
 // TestLoadConfig_FullExample tests a complete realistic config file.
 func TestLoadConfig_FullExample(t *testing.T) {
+	t.Setenv("BOUNCERFOX_CONFIG_DIR", t.TempDir())
 	yaml := `
 profile: recommended
 severity_floor: warn

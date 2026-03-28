@@ -3,6 +3,9 @@ package main_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -204,5 +207,117 @@ func TestScan_RuleFloor_CannotDisableSEC001(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "SEC_001") {
 		t.Error("SEC_001 should fire despite config trying to disable it (rule floor)")
+	}
+}
+
+// --- Connected mode & offline behavior tests ---
+
+func mockPlatform(t *testing.T, verdict string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/config/pull":
+			w.Header().Set("ETag", `"test"`)
+			w.WriteHeader(200)
+			w.Write([]byte("profile: recommended\n"))
+		case "/api/v1/scans/upload":
+			w.WriteHeader(201)
+			fmt.Fprintf(w, `{"scan_id":"test-id","verdict":%q,"reasons":[],"dashboard_url":"http://test/scans/test-id"}`, verdict)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+func TestConnected_PassVerdict_Exit0(t *testing.T) {
+	srv := mockPlatform(t, "pass")
+	defer srv.Close()
+	_, _, code := runBinary(t,
+		[]string{"scan", "testdata/clean-skill"},
+		"BOUNCERFOX_API_KEY=bf_testkey",
+		"BOUNCERFOX_PLATFORM_URL="+srv.URL,
+	)
+	if code != 0 {
+		t.Errorf("connected pass verdict: expected exit 0, got %d", code)
+	}
+}
+
+func TestConnected_FailVerdict_Exit1(t *testing.T) {
+	srv := mockPlatform(t, "fail")
+	defer srv.Close()
+	_, _, code := runBinary(t,
+		[]string{"scan", "testdata/clean-skill"},
+		"BOUNCERFOX_API_KEY=bf_testkey",
+		"BOUNCERFOX_PLATFORM_URL="+srv.URL,
+	)
+	if code != 1 {
+		t.Errorf("connected fail verdict: expected exit 1, got %d", code)
+	}
+}
+
+func TestConnected_DryRunUpload(t *testing.T) {
+	stdout, _, _ := runBinary(t,
+		[]string{"scan", "testdata/bad-skill", "--dry-run-upload", "--format", "json"},
+		"BOUNCERFOX_API_KEY=bf_testkey",
+		"BOUNCERFOX_PLATFORM_URL=http://localhost:1",
+	)
+	// The output contains two JSON documents: the scan findings (from --format json)
+	// followed by the upload payload (from --dry-run-upload). Extract the last
+	// top-level JSON object which is the upload payload.
+	lastBrace := strings.LastIndex(stdout, "\n{")
+	if lastBrace < 0 {
+		// Maybe the payload is the only thing or starts at position 0.
+		lastBrace = strings.Index(stdout, "{")
+		if lastBrace < 0 {
+			t.Fatalf("no JSON object found in output:\n%s", stdout)
+		}
+	} else {
+		lastBrace++ // skip the newline
+	}
+	jsonPart := stdout[lastBrace:]
+
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(jsonPart), &payload); err != nil {
+		t.Fatalf("dry-run output is not valid JSON: %v\nJSON part: %s", err, jsonPart)
+	}
+	if _, ok := payload["findings"]; !ok {
+		t.Error("dry-run payload missing 'findings' key")
+	}
+	if _, ok := payload["version"]; !ok {
+		t.Error("dry-run payload missing 'version' key")
+	}
+}
+
+func mockPlatformDown(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(503)
+		w.Write([]byte(`{"error":"server_error","message":"down"}`))
+	}))
+}
+
+func TestOffline_Warn_FallsBackToLocal(t *testing.T) {
+	srv := mockPlatformDown(t)
+	defer srv.Close()
+	_, _, code := runBinary(t,
+		[]string{"scan", "testdata/clean-skill", "--offline-behavior", "warn"},
+		"BOUNCERFOX_API_KEY=bf_testkey",
+		"BOUNCERFOX_PLATFORM_URL="+srv.URL,
+	)
+	if code != 0 {
+		t.Errorf("offline warn with clean skill: expected exit 0, got %d", code)
+	}
+}
+
+func TestOffline_FailClosed_Exit2(t *testing.T) {
+	srv := mockPlatformDown(t)
+	defer srv.Close()
+	_, _, code := runBinary(t,
+		[]string{"scan", "testdata/clean-skill", "--offline-behavior", "fail-closed"},
+		"BOUNCERFOX_API_KEY=bf_testkey",
+		"BOUNCERFOX_PLATFORM_URL="+srv.URL,
+	)
+	if code != 2 {
+		t.Errorf("offline fail-closed: expected exit 2, got %d", code)
 	}
 }

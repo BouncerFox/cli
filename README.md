@@ -263,6 +263,8 @@ Scan files for security and quality issues. Defaults to scanning the current dir
 | `--strip-paths` | | `false` | Send filenames only (no full paths) in upload |
 | `--anonymous` | | `false` | Strip all identifying info from upload |
 | `--no-cache` | | `false` | Skip config cache (always pull fresh) |
+| `--verbose` | `-v` | `false` | Show code frames with surrounding context |
+| `--no-color` | | `false` | Disable colors and Unicode symbols |
 
 ### `bouncerfox rules`
 
@@ -299,6 +301,7 @@ to pull fresh config on the next scan.
 | `BOUNCERFOX_CONFIG_DIR` | Config directory override (default: `~/.config/bouncerfox`) |
 | `BOUNCERFOX_TARGET` | Override scan target identity |
 | `GITHUB_TOKEN` | Required for `--github-comment` (PR comments and check runs) |
+| `NO_COLOR` | Disable colors and Unicode symbols in table output (any value) |
 
 CI environment variables (`GITHUB_ACTIONS`, `CI`, `GITHUB_SHA`, `GITHUB_REF_NAME`,
 `GITHUB_REPOSITORY`, `GITHUB_EVENT_PATH`) are auto-detected when running in GitHub Actions.

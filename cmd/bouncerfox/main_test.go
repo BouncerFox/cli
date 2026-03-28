@@ -2,9 +2,11 @@ package main_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -111,5 +113,96 @@ func TestSmoke_CompletionFish(t *testing.T) {
 	_, _, code := runBinary(t, []string{"completion", "fish"})
 	if code != 0 {
 		t.Errorf("completion fish: expected exit 0, got %d", code)
+	}
+}
+
+func TestScan_BadSkill_ExitCode1(t *testing.T) {
+	_, _, code := runBinary(t, []string{"scan", "testdata/bad-skill"})
+	if code != 1 {
+		t.Errorf("scan bad-skill: expected exit 1, got %d", code)
+	}
+}
+
+func TestScan_BadSkill_ContainsRuleIDs(t *testing.T) {
+	stdout, _, _ := runBinary(t, []string{"scan", "testdata/bad-skill"})
+	for _, id := range []string{"SEC_001", "SEC_002"} {
+		if !strings.Contains(stdout, id) {
+			t.Errorf("scan output should contain %s", id)
+		}
+	}
+}
+
+func TestScan_BadSkill_JSONFormat(t *testing.T) {
+	stdout, _, code := runBinary(t, []string{"scan", "testdata/bad-skill", "--format", "json"})
+	if code != 1 {
+		t.Errorf("expected exit 1, got %d", code)
+	}
+	var envelope struct {
+		Findings []map[string]any `json:"findings"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+		t.Fatalf("JSON output is not valid JSON: %v\nOutput: %s", err, stdout)
+	}
+	if len(envelope.Findings) == 0 {
+		t.Error("expected at least one finding in JSON output")
+	}
+	for _, f := range envelope.Findings {
+		if _, ok := f["rule_id"]; !ok {
+			t.Error("JSON finding missing rule_id field")
+		}
+		if _, ok := f["severity"]; !ok {
+			t.Error("JSON finding missing severity field")
+		}
+	}
+}
+
+func TestScan_BadSkill_SARIFFormat(t *testing.T) {
+	stdout, _, code := runBinary(t, []string{"scan", "testdata/bad-skill", "--format", "sarif"})
+	if code != 1 {
+		t.Errorf("expected exit 1, got %d", code)
+	}
+	var sarif map[string]any
+	if err := json.Unmarshal([]byte(stdout), &sarif); err != nil {
+		t.Fatalf("SARIF output is not valid JSON: %v", err)
+	}
+	if _, ok := sarif["$schema"]; !ok {
+		t.Error("SARIF output missing $schema")
+	}
+	if _, ok := sarif["runs"]; !ok {
+		t.Error("SARIF output missing runs")
+	}
+}
+
+func TestScan_SeverityFilter(t *testing.T) {
+	stdout, _, _ := runBinary(t, []string{"scan", "testdata/bad-skill", "--severity", "critical"})
+	if !strings.Contains(stdout, "SEC_001") {
+		t.Error("critical severity filter should still show SEC_001 (critical)")
+	}
+	if strings.Contains(stdout, "QA_003") {
+		t.Error("critical severity filter should hide QA_003 (warn)")
+	}
+}
+
+func TestScan_BadSettings(t *testing.T) {
+	_, _, code := runBinary(t, []string{"scan", "testdata/bad-settings"})
+	if code != 1 {
+		t.Errorf("scan bad-settings: expected exit 1, got %d", code)
+	}
+}
+
+func TestScan_ConfigOverride_DisablesRule(t *testing.T) {
+	stdout, _, _ := runBinary(t, []string{"scan", "testdata/config-override", "--config", "testdata/config-override/.bouncerfox.yml"})
+	if strings.Contains(stdout, "SEC_002") {
+		t.Error("SEC_002 should be disabled by config override")
+	}
+}
+
+func TestScan_RuleFloor_CannotDisableSEC001(t *testing.T) {
+	stdout, _, code := runBinary(t, []string{"scan", "testdata/floor-test", "--config", "testdata/floor-test/.bouncerfox.yml"})
+	if code != 1 {
+		t.Errorf("floor-test: expected exit 1 (SEC_001 should fire), got %d", code)
+	}
+	if !strings.Contains(stdout, "SEC_001") {
+		t.Error("SEC_001 should fire despite config trying to disable it (rule floor)")
 	}
 }

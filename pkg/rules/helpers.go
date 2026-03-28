@@ -33,25 +33,29 @@ func getParsedIntBoolMap(doc *document.ConfigDocument, key string) map[int]bool 
 	return nil
 }
 
-func getIntParam(ruleID, key string, defaultVal int) int {
-	if p, ok := RuleParams[ruleID]; ok {
-		switch v := p[key].(type) {
-		case int:
-			return v
-		case float64:
-			return int(v)
+func getIntParam(rc *document.RuleContext, ruleID, key string, defaultVal int) int {
+	if rc != nil && rc.Params != nil {
+		if p, ok := rc.Params[ruleID]; ok {
+			switch v := p[key].(type) {
+			case int:
+				return v
+			case float64:
+				return int(v)
+			}
 		}
 	}
 	return defaultVal
 }
 
-func getFloatParam(ruleID, key string, defaultVal float64) float64 {
-	if p, ok := RuleParams[ruleID]; ok {
-		switch v := p[key].(type) {
-		case float64:
-			return v
-		case int:
-			return float64(v)
+func getFloatParam(rc *document.RuleContext, ruleID, key string, defaultVal float64) float64 {
+	if rc != nil && rc.Params != nil {
+		if p, ok := rc.Params[ruleID]; ok {
+			switch v := p[key].(type) {
+			case float64:
+				return v
+			case int:
+				return float64(v)
+			}
 		}
 	}
 	return defaultVal

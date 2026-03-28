@@ -1,13 +1,14 @@
 package engine_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	"github.com/bouncerfox/cli/pkg/document"
 	"github.com/bouncerfox/cli/pkg/engine"
 	"github.com/bouncerfox/cli/pkg/parser"
-	_ "github.com/bouncerfox/cli/pkg/rules"
+	"github.com/bouncerfox/cli/pkg/rules"
 )
 
 // findRuleIDs collects rule IDs from findings into a set for quick lookup.
@@ -33,7 +34,7 @@ func TestIntegration_SkillMD_Clean(t *testing.T) {
 		t.Fatal("RouteAndParse returned nil for clean SKILL.md")
 	}
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 
 	for _, f := range result.Findings {
 		if f.Severity.Level() > document.SeverityInfo.Level() {
@@ -54,7 +55,7 @@ func TestIntegration_SkillMD_WithIssues(t *testing.T) {
 		t.Fatal("RouteAndParse returned nil for SKILL.md with issues")
 	}
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 	ids := findRuleIDs(result.Findings)
 
 	if !ids["QA_001"] {
@@ -95,7 +96,7 @@ func TestIntegration_SettingsJSON_WithSecurityIssues(t *testing.T) {
 		t.Fatal("RouteAndParse returned nil for settings.json")
 	}
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 	ids := findRuleIDs(result.Findings)
 
 	if !ids["CFG_001"] {
@@ -130,7 +131,7 @@ func TestIntegration_MCPJSON_UnpinnedPackage(t *testing.T) {
 		t.Fatal("RouteAndParse returned nil for .mcp.json")
 	}
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 	ids := findRuleIDs(result.Findings)
 
 	if !ids["SEC_014"] {
@@ -158,7 +159,7 @@ func TestIntegration_SecretDetection(t *testing.T) {
 		t.Fatal("RouteAndParse returned nil for CLAUDE.md")
 	}
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 
 	found := false
 	for _, f := range result.Findings {
@@ -192,7 +193,7 @@ func TestIntegration_RuleSuppression(t *testing.T) {
 		t.Fatal("RouteAndParse returned nil for CLAUDE.md")
 	}
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 
 	sec001Fired := false
 	for _, f := range result.Findings {
@@ -231,8 +232,9 @@ func TestIntegration_SeverityFloor(t *testing.T) {
 		t.Fatal("RouteAndParse returned nil")
 	}
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		SeverityFloor: document.SeverityHigh,
+		RuleParams:    rules.DefaultRuleParams(),
 	})
 
 	for _, f := range result.Findings {
@@ -254,8 +256,9 @@ func TestIntegration_DisabledRules(t *testing.T) {
 		t.Fatal("RouteAndParse returned nil")
 	}
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		DisabledRules: []string{"SEC_001"},
+		RuleParams:    rules.DefaultRuleParams(),
 	})
 
 	for _, f := range result.Findings {
@@ -265,7 +268,7 @@ func TestIntegration_DisabledRules(t *testing.T) {
 	}
 
 	// Verify that SEC_001 does fire without the disabled rule, as a sanity check.
-	control := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	control := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 	controlIDs := findRuleIDs(control.Findings)
 	if !controlIDs["SEC_001"] {
 		t.Error("sanity check failed: SEC_001 should fire without DisabledRules")
@@ -295,14 +298,15 @@ func TestIntegration_MaxFindings(t *testing.T) {
 	}
 
 	// First verify we get more than 2 findings without the cap.
-	uncapped := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	uncapped := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 	if len(uncapped.Findings) <= 2 {
 		t.Skipf("need more than 2 findings for this test, got %d", len(uncapped.Findings))
 	}
 
 	// Now apply the cap.
-	capped := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	capped := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		MaxFindings: 2,
+		RuleParams:  rules.DefaultRuleParams(),
 	})
 
 	if len(capped.Findings) != 2 {

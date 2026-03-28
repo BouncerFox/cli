@@ -217,8 +217,7 @@ func readConfigFile(dir string) ([]byte, error) {
 	return nil, nil
 }
 
-// ToScanOptions translates the Config into engine.ScanOptions and applies
-// per-rule param overrides to rules.RuleParams.
+// ToScanOptions translates the Config into engine.ScanOptions.
 // floorRules are the rule IDs that can never be disabled (unless NoFloor is
 // set). These protect against the most dangerous classes of finding:
 // secrets (SEC_001), destructive commands (SEC_003), invisible unicode (SEC_004).
@@ -239,6 +238,7 @@ var recommendedDisabled = map[string]bool{
 }
 
 func (c *Config) ToScanOptions() engine.ScanOptions {
+	ruleParams := rules.DefaultRuleParams()
 	var disabled []string
 	severityOverrides := make(map[string]document.FindingSeverity)
 
@@ -267,13 +267,12 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 			severityOverrides[id] = clampSeverity(id, *rc.Severity)
 		}
 
-		// Apply per-rule param overrides to the global RuleParams map.
 		if len(rc.Params) > 0 {
-			if rules.RuleParams[id] == nil {
-				rules.RuleParams[id] = make(map[string]any)
+			if ruleParams[id] == nil {
+				ruleParams[id] = make(map[string]any)
 			}
 			for k, v := range rc.Params {
-				rules.RuleParams[id][k] = v
+				ruleParams[id][k] = v
 			}
 		}
 	}
@@ -294,23 +293,6 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 		DisabledRules:     disabled,
 		SeverityFloor:     c.SeverityFloor,
 		SeverityOverrides: severityOverrides,
+		RuleParams:        ruleParams,
 	}
-}
-
-// GetRuleParam is a test helper that returns a parameter value from
-// rules.RuleParams. It is exported to allow white-box testing from config_test.
-func GetRuleParam(ruleID, key string) any {
-	if rules.RuleParams[ruleID] == nil {
-		return nil
-	}
-	return rules.RuleParams[ruleID][key]
-}
-
-// SetRuleParam is a test helper that sets a parameter value in rules.RuleParams.
-// It is exported to allow test teardown / isolation.
-func SetRuleParam(ruleID, key string, val any) {
-	if rules.RuleParams[ruleID] == nil {
-		rules.RuleParams[ruleID] = make(map[string]any)
-	}
-	rules.RuleParams[ruleID][key] = val
 }

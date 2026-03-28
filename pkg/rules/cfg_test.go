@@ -11,7 +11,7 @@ import (
 
 func TestCFG001_BareBash(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Bash", "Read"]}`)
-	findings := CheckCFG001(doc)
+	findings := CheckCFG001(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -25,7 +25,7 @@ func TestCFG001_BareBash(t *testing.T) {
 
 func TestCFG001_BashLowercase(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["bash"]}`)
-	findings := CheckCFG001(doc)
+	findings := CheckCFG001(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -33,7 +33,7 @@ func TestCFG001_BashLowercase(t *testing.T) {
 
 func TestCFG001_BashWildcard(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Bash(*)", "Read"]}`)
-	findings := CheckCFG001(doc)
+	findings := CheckCFG001(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -41,7 +41,7 @@ func TestCFG001_BashWildcard(t *testing.T) {
 
 func TestCFG001_BashRestricted(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Bash(git status)", "Read"]}`)
-	findings := CheckCFG001(doc)
+	findings := CheckCFG001(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0 (bash with restrictions is OK)", len(findings))
 	}
@@ -49,7 +49,7 @@ func TestCFG001_BashRestricted(t *testing.T) {
 
 func TestCFG001_NotSettingsJSON(t *testing.T) {
 	doc := newMCPDoc(`{"mcpServers": {}}`)
-	findings := CheckCFG001(doc)
+	findings := CheckCFG001(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0 (non-settings_json)", len(findings))
 	}
@@ -57,7 +57,7 @@ func TestCFG001_NotSettingsJSON(t *testing.T) {
 
 func TestCFG001_NoAllowedTools(t *testing.T) {
 	doc := newSettingsDoc(`{"model": "claude-3"}`)
-	findings := CheckCFG001(doc)
+	findings := CheckCFG001(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -67,7 +67,7 @@ func TestCFG001_NoAllowedTools(t *testing.T) {
 
 func TestCFG002_WriteAllowed(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Read", "Write"]}`)
-	findings := CheckCFG002(doc)
+	findings := CheckCFG002(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -81,7 +81,7 @@ func TestCFG002_WriteAllowed(t *testing.T) {
 
 func TestCFG002_WriteWildcard(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Write(*)"]}`)
-	findings := CheckCFG002(doc)
+	findings := CheckCFG002(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -89,7 +89,7 @@ func TestCFG002_WriteWildcard(t *testing.T) {
 
 func TestCFG002_NoWrite(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Read", "Bash(git status)"]}`)
-	findings := CheckCFG002(doc)
+	findings := CheckCFG002(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -99,7 +99,7 @@ func TestCFG002_NoWrite(t *testing.T) {
 
 func TestCFG003_MCPWildcard(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["mcp__myserver__*"]}`)
-	findings := CheckCFG003(doc)
+	findings := CheckCFG003(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -113,7 +113,7 @@ func TestCFG003_MCPWildcard(t *testing.T) {
 
 func TestCFG003_MCPExact(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["mcp__myserver__my_tool"]}`)
-	findings := CheckCFG003(doc)
+	findings := CheckCFG003(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0 (exact MCP tool name is OK)", len(findings))
 	}
@@ -121,7 +121,7 @@ func TestCFG003_MCPExact(t *testing.T) {
 
 func TestCFG003_NoMCP(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Read", "Write"]}`)
-	findings := CheckCFG003(doc)
+	findings := CheckCFG003(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -136,7 +136,7 @@ func TestCFG004_HookWithCommandSub(t *testing.T) {
 		}
 	}`
 	doc := newSettingsDoc(content)
-	findings := CheckCFG004(doc)
+	findings := CheckCFG004(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -155,7 +155,7 @@ func TestCFG004_HookWithPipe(t *testing.T) {
 		}
 	}`
 	doc := newSettingsDoc(content)
-	findings := CheckCFG004(doc)
+	findings := CheckCFG004(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -168,7 +168,7 @@ func TestCFG004_HookWithSemicolon(t *testing.T) {
 		}
 	}`
 	doc := newSettingsDoc(content)
-	findings := CheckCFG004(doc)
+	findings := CheckCFG004(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -181,7 +181,7 @@ func TestCFG004_SafeHook(t *testing.T) {
 		}
 	}`
 	doc := newSettingsDoc(content)
-	findings := CheckCFG004(doc)
+	findings := CheckCFG004(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -189,7 +189,7 @@ func TestCFG004_SafeHook(t *testing.T) {
 
 func TestCFG004_NoHooks(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Read"]}`)
-	findings := CheckCFG004(doc)
+	findings := CheckCFG004(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -204,7 +204,7 @@ func TestCFG005_TooManyTools(t *testing.T) {
 	}
 	content := `{"allowedTools": [` + joinStrings(tools, ",") + `]}`
 	doc := newSettingsDoc(content)
-	findings := CheckCFG005(doc)
+	findings := CheckCFG005(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -218,7 +218,7 @@ func TestCFG005_TooManyTools(t *testing.T) {
 
 func TestCFG005_FewTools(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Read", "Write", "Bash(git status)"]}`)
-	findings := CheckCFG005(doc)
+	findings := CheckCFG005(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -227,7 +227,7 @@ func TestCFG005_FewTools(t *testing.T) {
 func TestCFG004_BacktickSubstitution(t *testing.T) {
 	settings := `{"hooks":{"PreToolUse":[{"matcher":{"tool_name":"*"},"hooks":[{"type":"command","command":"echo ` + "`whoami`" + `"}]}]}}`
 	doc := newSettingsDoc(settings)
-	findings := CheckCFG004(doc)
+	findings := CheckCFG004(doc, defaultRC())
 	if len(findings) == 0 {
 		t.Error("backtick command substitution in hook should trigger CFG_004")
 	}
@@ -240,7 +240,7 @@ func TestCFG005_ExactlyTwenty(t *testing.T) {
 	}
 	content := `{"allowedTools": [` + joinStrings(tools, ",") + `]}`
 	doc := newSettingsDoc(content)
-	findings := CheckCFG005(doc)
+	findings := CheckCFG005(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0 (exactly 20 is OK)", len(findings))
 	}
@@ -250,7 +250,7 @@ func TestCFG005_ExactlyTwenty(t *testing.T) {
 
 func TestCFG006_NoDeniedTools(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Read"]}`)
-	findings := CheckCFG006(doc)
+	findings := CheckCFG006(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -264,7 +264,7 @@ func TestCFG006_NoDeniedTools(t *testing.T) {
 
 func TestCFG006_EmptyDeniedTools(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Read"], "deniedTools": []}`)
-	findings := CheckCFG006(doc)
+	findings := CheckCFG006(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1 (empty list)", len(findings))
 	}
@@ -272,7 +272,7 @@ func TestCFG006_EmptyDeniedTools(t *testing.T) {
 
 func TestCFG006_HasDeniedTools(t *testing.T) {
 	doc := newSettingsDoc(`{"allowedTools": ["Read"], "deniedTools": ["Write"]}`)
-	findings := CheckCFG006(doc)
+	findings := CheckCFG006(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -290,7 +290,7 @@ func TestCFG009_MCPAllowAll(t *testing.T) {
 		}
 	}`
 	doc := newMCPDoc(content)
-	findings := CheckCFG009(doc)
+	findings := CheckCFG009(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -312,7 +312,7 @@ func TestCFG009_MCPNoSandbox(t *testing.T) {
 		}
 	}`
 	doc := newMCPDoc(content)
-	findings := CheckCFG009(doc)
+	findings := CheckCFG009(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -328,7 +328,7 @@ func TestCFG009_MCPSafe(t *testing.T) {
 		}
 	}`
 	doc := newMCPDoc(content)
-	findings := CheckCFG009(doc)
+	findings := CheckCFG009(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -341,7 +341,7 @@ func TestCFG009_HookPermissiveFlag(t *testing.T) {
 		}
 	}`
 	doc := newSettingsDoc(content)
-	findings := CheckCFG009(doc)
+	findings := CheckCFG009(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -357,7 +357,7 @@ func TestCFG009_DashAFlag(t *testing.T) {
 		}
 	}`
 	doc := newMCPDoc(content)
-	findings := CheckCFG009(doc)
+	findings := CheckCFG009(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1 (-A flag)", len(findings))
 	}

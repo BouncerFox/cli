@@ -110,7 +110,7 @@ var dangerousEnvVars = map[string]bool{
 }
 
 // CheckSEC019 detects YAML anchor/alias usage (potential YAML bomb).
-func CheckSEC019(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC019(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if !hasParseError(doc) {
 		return nil
 	}
@@ -136,7 +136,7 @@ func CheckSEC019(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC020 detects deeply nested JSON that may cause resource exhaustion.
-func CheckSEC020(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC020(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if !hasParseError(doc) {
 		return nil
 	}
@@ -157,10 +157,12 @@ func CheckSEC020(doc *document.ConfigDocument) []document.ScanFinding {
 	}}
 }
 
-func getURLAllowlist() []string {
-	if p, ok := RuleParams["SEC_002"]; ok {
-		if al, ok := p["url_allowlist"].([]string); ok {
-			return al
+func getURLAllowlist(rc *document.RuleContext) []string {
+	if rc != nil && rc.Params != nil {
+		if p, ok := rc.Params["SEC_002"]; ok {
+			if al, ok := p["url_allowlist"].([]string); ok {
+				return al
+			}
 		}
 	}
 	return nil
@@ -199,7 +201,7 @@ func checkHookPatterns(
 // CheckSEC001 detects hardcoded secret-like tokens.
 // Iterates ALL lines (including code blocks). Evidence snippet is always "".
 // Caches matched line numbers in doc.Parsed[sec001LinesKey].
-func CheckSEC001(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC001(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	lines := strings.Split(doc.Content, "\n")
 	sec001Lines := make(map[int]bool)
 	var findings []document.ScanFinding
@@ -233,10 +235,10 @@ func CheckSEC001(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC002 detects external URLs not in the allowlist. Skips code blocks.
-func CheckSEC002(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC002(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	lines := strings.Split(doc.Content, "\n")
 	cbl := getParsedIntBoolMap(doc, "content_code_block_lines")
-	allowlist := getURLAllowlist()
+	allowlist := getURLAllowlist(rc)
 	var findings []document.ScanFinding
 
 	for i, line := range lines {
@@ -271,7 +273,7 @@ func CheckSEC002(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC003 detects destructive commands in skill_md files. Skips code blocks.
-func CheckSEC003(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC003(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSkillMD {
 		return nil
 	}
@@ -286,7 +288,7 @@ func CheckSEC003(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC004 detects invisible unicode / zero-width characters. Does NOT skip code blocks.
-func CheckSEC004(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC004(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	lines := strings.Split(doc.Content, "\n")
 	var findings []document.ScanFinding
 
@@ -314,7 +316,7 @@ func CheckSEC004(doc *document.ConfigDocument) []document.ScanFinding {
 
 // CheckSEC006 detects base64-encoded blobs. Skips code blocks and lines already
 // flagged by SEC_001.
-func CheckSEC006(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC006(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	lines := strings.Split(doc.Content, "\n")
 	cbl := getParsedIntBoolMap(doc, "content_code_block_lines")
 	sec001Lines := getParsedIntBoolMap(doc, sec001LinesKey)
@@ -350,7 +352,7 @@ func CheckSEC006(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC007 detects data: URIs. Skips code blocks.
-func CheckSEC007(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC007(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	return CheckLinePatterns(
 		strings.Split(doc.Content, "\n"),
 		[]*regexp.Regexp{dataURIRe},
@@ -362,7 +364,7 @@ func CheckSEC007(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC009 detects reverse shell patterns in settings_json hook commands.
-func CheckSEC009(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC009(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
 		return nil
 	}
@@ -371,7 +373,7 @@ func CheckSEC009(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC010 detects credential exfiltration patterns in settings_json hook commands.
-func CheckSEC010(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC010(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
 		return nil
 	}
@@ -380,7 +382,7 @@ func CheckSEC010(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC011 detects download-and-execute patterns in settings_json hooks and mcp_json servers.
-func CheckSEC011(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC011(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if hasParseError(doc) {
 		return nil
 	}
@@ -418,7 +420,7 @@ func CheckSEC011(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC012 detects dangerous environment variable overrides in settings_json.
-func CheckSEC012(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC012(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
 		return nil
 	}
@@ -449,7 +451,7 @@ func CheckSEC012(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC014 detects unpinned MCP package versions in mcp_json.
-func CheckSEC014(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC014(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeMCPJSON || hasParseError(doc) {
 		return nil
 	}
@@ -496,7 +498,7 @@ func CheckSEC014(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckSEC016 detects plain HTTP URLs for MCP servers (excluding localhost).
-func CheckSEC016(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC016(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeMCPJSON || hasParseError(doc) {
 		return nil
 	}
@@ -533,9 +535,15 @@ func CheckSEC016(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // sec018Params returns the entropy thresholds and min lengths for SEC_018.
-// Reads from RuleParams["SEC_018"] with safe defaults.
-func sec018Params() (thresholds map[string]map[string]float64, minLengths map[string]int) {
-	p := RuleParams["SEC_018"]
+// Reads from rc.Params["SEC_018"] with safe defaults.
+func sec018Params(rc *document.RuleContext) (thresholds map[string]map[string]float64, minLengths map[string]int) {
+	var p map[string]any
+	if rc != nil && rc.Params != nil {
+		p = rc.Params["SEC_018"]
+	}
+	if p == nil {
+		p = map[string]any{}
+	}
 	getFloat := func(key string, def float64) float64 {
 		if v, ok := p[key]; ok {
 			switch n := v.(type) {
@@ -598,18 +606,18 @@ const sec018Remediation = "If this is a secret, remove it and use environment va
 // CheckSEC018 detects high-entropy strings that may be hardcoded secrets.
 // For markdown files it scans content lines (skipping code blocks and SEC_001 lines).
 // For JSON files it walks the parsed document recursively.
-func CheckSEC018(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckSEC018(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	switch doc.FileType {
 	case document.FileTypeSkillMD, document.FileTypeClaudeMD, document.FileTypeAgentMD:
-		return checkSEC018Markdown(doc)
+		return checkSEC018Markdown(doc, rc)
 	case document.FileTypeSettingsJSON, document.FileTypeMCPJSON:
-		return checkSEC018JSON(doc)
+		return checkSEC018JSON(doc, rc)
 	}
 	return nil
 }
 
-func checkSEC018Markdown(doc *document.ConfigDocument) []document.ScanFinding {
-	thresholds, minLengths := sec018Params()
+func checkSEC018Markdown(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
+	thresholds, minLengths := sec018Params(rc)
 
 	contentLines := strings.Split(doc.Content, "\n")
 	sec001Lines := getParsedIntBoolMap(doc, sec001LinesKey)
@@ -725,12 +733,12 @@ func findLineForValue(content, value string) int {
 
 var arrayIndexRe = regexp.MustCompile(`\[\d+\]`)
 
-func checkSEC018JSON(doc *document.ConfigDocument) []document.ScanFinding {
+func checkSEC018JSON(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if hasParseError(doc) {
 		return nil
 	}
 
-	thresholds, minLengths := sec018Params()
+	thresholds, minLengths := sec018Params(rc)
 	entries := walkJSON(doc.Parsed, "", 0)
 
 	var findings []document.ScanFinding

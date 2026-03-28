@@ -14,7 +14,7 @@ var skillNameFromPathRe = regexp.MustCompile(`\.claude/skills/([^/]+)/SKILL\.md$
 var validSkillNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // CheckQA001 checks that required frontmatter fields (name, description) exist.
-func CheckQA001(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckQA001(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSkillMD {
 		return nil
 	}
@@ -51,7 +51,7 @@ func CheckQA001(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckQA002 checks that the frontmatter name matches the directory name in the file path.
-func CheckQA002(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckQA002(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSkillMD {
 		return nil
 	}
@@ -86,12 +86,12 @@ func CheckQA002(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckQA003 checks that the description is long enough.
-func CheckQA003(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckQA003(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSkillMD {
 		return nil
 	}
 
-	minLen := getIntParam("QA_003", "min_description_length", 20)
+	minLen := getIntParam(rc, "QA_003", "min_description_length", 20)
 
 	fm, _ := doc.Parsed["frontmatter"].(map[string]any)
 	desc, _ := fm["description"].(string)
@@ -115,7 +115,7 @@ func CheckQA003(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckQA004 checks that the skill body is not empty.
-func CheckQA004(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckQA004(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSkillMD {
 		return nil
 	}
@@ -156,7 +156,7 @@ func stripCodeFences(text string) string {
 }
 
 // CheckQA005 checks that the skill body (after stripping code blocks) is long enough.
-func CheckQA005(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckQA005(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSkillMD {
 		return nil
 	}
@@ -185,7 +185,7 @@ func CheckQA005(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckQA006 checks that the skill has a non-empty tools list in frontmatter.
-func CheckQA006(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckQA006(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSkillMD {
 		return nil
 	}
@@ -225,7 +225,7 @@ func CheckQA006(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckQA007 checks that the skill name matches the valid name pattern.
-func CheckQA007(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckQA007(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSkillMD {
 		return nil
 	}
@@ -268,8 +268,8 @@ func CheckQA007(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckQA008 checks that the file is not too large. Applies to all file types.
-func CheckQA008(doc *document.ConfigDocument) []document.ScanFinding {
-	maxKB := getFloatParam("QA_008", "max_file_size_kb", 50.0)
+func CheckQA008(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
+	maxKB := getFloatParam(rc, "QA_008", "max_file_size_kb", 50.0)
 	maxBytes := int(maxKB * 1024)
 
 	if len(doc.Content) <= maxBytes {
@@ -292,7 +292,7 @@ func CheckQA008(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckQA009 detects files that exceed the maximum scannable size (1MB).
-func CheckQA009(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckQA009(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if !hasParseError(doc) {
 		return nil
 	}
@@ -310,7 +310,7 @@ func CheckQA009(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckQA010 detects binary files that cannot be scanned.
-func CheckQA010(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckQA010(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if !hasParseError(doc) {
 		return nil
 	}

@@ -12,7 +12,7 @@ import (
 
 func TestQA001_MissingBoth(t *testing.T) {
 	doc := newSkillDoc("---\n---\nBody here.\n")
-	findings := CheckQA001(doc)
+	findings := CheckQA001(doc, defaultRC())
 	if len(findings) != 2 {
 		t.Fatalf("got %d findings, want 2 (name + description)", len(findings))
 	}
@@ -28,7 +28,7 @@ func TestQA001_MissingBoth(t *testing.T) {
 
 func TestQA001_MissingDescription(t *testing.T) {
 	doc := newSkillDoc("---\nname: my-skill\n---\nBody here.\n")
-	findings := CheckQA001(doc)
+	findings := CheckQA001(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -39,7 +39,7 @@ func TestQA001_MissingDescription(t *testing.T) {
 
 func TestQA001_MissingName(t *testing.T) {
 	doc := newSkillDoc("---\ndescription: A good description here\n---\nBody here.\n")
-	findings := CheckQA001(doc)
+	findings := CheckQA001(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -50,7 +50,7 @@ func TestQA001_MissingName(t *testing.T) {
 
 func TestQA001_AllPresent(t *testing.T) {
 	doc := newSkillDoc("---\nname: my-skill\ndescription: A good description here\n---\nBody here.\n")
-	findings := CheckQA001(doc)
+	findings := CheckQA001(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -58,7 +58,7 @@ func TestQA001_AllPresent(t *testing.T) {
 
 func TestQA001_NotSkillMD(t *testing.T) {
 	doc := newClaudeMDDoc("# Claude context\nNo frontmatter needed.\n")
-	findings := CheckQA001(doc)
+	findings := CheckQA001(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0 (non-skill_md)", len(findings))
 	}
@@ -66,7 +66,7 @@ func TestQA001_NotSkillMD(t *testing.T) {
 
 func TestQA001_EmptyDescription(t *testing.T) {
 	doc := newSkillDoc("---\nname: my-skill\ndescription: \n---\nBody.\n")
-	findings := CheckQA001(doc)
+	findings := CheckQA001(doc, defaultRC())
 	// description is empty string — should flag it
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1 (empty description)", len(findings))
@@ -87,7 +87,7 @@ func TestQA002_Mismatch(t *testing.T) {
 			},
 		},
 	}
-	findings := CheckQA002(doc)
+	findings := CheckQA002(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -108,7 +108,7 @@ func TestQA002_Match(t *testing.T) {
 			},
 		},
 	}
-	findings := CheckQA002(doc)
+	findings := CheckQA002(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -124,7 +124,7 @@ func TestQA002_NoPathMatch(t *testing.T) {
 			"frontmatter": map[string]any{"name": "anything"},
 		},
 	}
-	findings := CheckQA002(doc)
+	findings := CheckQA002(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0 (no path match)", len(findings))
 	}
@@ -139,7 +139,7 @@ func TestQA002_NoName(t *testing.T) {
 			"frontmatter": map[string]any{"description": "desc"},
 		},
 	}
-	findings := CheckQA002(doc)
+	findings := CheckQA002(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0 (no name to compare)", len(findings))
 	}
@@ -149,7 +149,7 @@ func TestQA002_NoName(t *testing.T) {
 
 func TestQA003_TooShort(t *testing.T) {
 	doc := newSkillDoc("---\nname: s\ndescription: short\n---\n")
-	findings := CheckQA003(doc)
+	findings := CheckQA003(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -166,7 +166,7 @@ func TestQA003_TooShort(t *testing.T) {
 
 func TestQA003_LongEnough(t *testing.T) {
 	doc := newSkillDoc("---\nname: s\ndescription: This is a sufficiently long description\n---\n")
-	findings := CheckQA003(doc)
+	findings := CheckQA003(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -174,7 +174,7 @@ func TestQA003_LongEnough(t *testing.T) {
 
 func TestQA003_Empty(t *testing.T) {
 	doc := newSkillDoc("---\nname: s\ndescription: \n---\n")
-	findings := CheckQA003(doc)
+	findings := CheckQA003(doc, defaultRC())
 	// empty description is handled by QA_001, QA_003 should not fire
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0 (empty description not flagged by QA_003)", len(findings))
@@ -185,7 +185,7 @@ func TestQA003_Empty(t *testing.T) {
 
 func TestQA004_EmptyBody(t *testing.T) {
 	doc := newSkillDoc("---\nname: s\n---\n")
-	findings := CheckQA004(doc)
+	findings := CheckQA004(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -196,7 +196,7 @@ func TestQA004_EmptyBody(t *testing.T) {
 
 func TestQA004_WhitespaceBody(t *testing.T) {
 	doc := newSkillDoc("---\nname: s\n---\n   \n\t\n")
-	findings := CheckQA004(doc)
+	findings := CheckQA004(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1 (whitespace-only body)", len(findings))
 	}
@@ -204,7 +204,7 @@ func TestQA004_WhitespaceBody(t *testing.T) {
 
 func TestQA004_WithBody(t *testing.T) {
 	doc := newSkillDoc("---\nname: s\n---\nSome content here.\n")
-	findings := CheckQA004(doc)
+	findings := CheckQA004(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -215,7 +215,7 @@ func TestQA004_WithBody(t *testing.T) {
 func TestQA005_OnlyCodeBlock(t *testing.T) {
 	body := "```python\nprint('hello world')\n```\n"
 	doc := newSkillDoc("---\nname: s\n---\n" + body)
-	findings := CheckQA005(doc)
+	findings := CheckQA005(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1 (body is only code, no prose)", len(findings))
 	}
@@ -230,7 +230,7 @@ func TestQA005_OnlyCodeBlock(t *testing.T) {
 func TestQA005_GoodProse(t *testing.T) {
 	body := "This skill does something useful and has enough prose content to pass the check.\n"
 	doc := newSkillDoc("---\nname: s\n---\n" + body)
-	findings := CheckQA005(doc)
+	findings := CheckQA005(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -239,7 +239,7 @@ func TestQA005_GoodProse(t *testing.T) {
 func TestQA005_EmptyBodyNotFired(t *testing.T) {
 	// QA_005 should not fire when body is completely empty (QA_004 handles that)
 	doc := newSkillDoc("---\nname: s\n---\n")
-	findings := CheckQA005(doc)
+	findings := CheckQA005(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0 (QA_004 handles empty body)", len(findings))
 	}
@@ -249,7 +249,7 @@ func TestQA005_EmptyBodyNotFired(t *testing.T) {
 
 func TestQA006_MissingTools(t *testing.T) {
 	doc := newSkillDoc("---\nname: s\ndescription: desc\n---\nBody.\n")
-	findings := CheckQA006(doc)
+	findings := CheckQA006(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -263,7 +263,7 @@ func TestQA006_MissingTools(t *testing.T) {
 
 func TestQA006_HasTools(t *testing.T) {
 	doc := newSkillDoc("---\nname: s\ndescription: desc\ntools:\n  - Read\n---\nBody.\n")
-	findings := CheckQA006(doc)
+	findings := CheckQA006(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -271,7 +271,7 @@ func TestQA006_HasTools(t *testing.T) {
 
 func TestQA006_NotSkillMD(t *testing.T) {
 	doc := newClaudeMDDoc("# Hello\n")
-	findings := CheckQA006(doc)
+	findings := CheckQA006(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -281,7 +281,7 @@ func TestQA006_NotSkillMD(t *testing.T) {
 
 func TestQA007_ValidName(t *testing.T) {
 	doc := newSkillDoc("---\nname: my-skill-123\ndescription: desc\n---\n")
-	findings := CheckQA007(doc)
+	findings := CheckQA007(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -289,7 +289,7 @@ func TestQA007_ValidName(t *testing.T) {
 
 func TestQA007_UpperCase(t *testing.T) {
 	doc := newSkillDoc("---\nname: MySkill\ndescription: desc\n---\n")
-	findings := CheckQA007(doc)
+	findings := CheckQA007(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -300,7 +300,7 @@ func TestQA007_UpperCase(t *testing.T) {
 
 func TestQA007_StartsWithHyphen(t *testing.T) {
 	doc := newSkillDoc("---\nname: -bad-name\ndescription: desc\n---\n")
-	findings := CheckQA007(doc)
+	findings := CheckQA007(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -308,7 +308,7 @@ func TestQA007_StartsWithHyphen(t *testing.T) {
 
 func TestQA007_WithSpaces(t *testing.T) {
 	doc := newSkillDoc("---\nname: bad name\ndescription: desc\n---\n")
-	findings := CheckQA007(doc)
+	findings := CheckQA007(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -316,7 +316,7 @@ func TestQA007_WithSpaces(t *testing.T) {
 
 func TestQA007_NoName(t *testing.T) {
 	doc := newSkillDoc("---\ndescription: desc\n---\n")
-	findings := CheckQA007(doc)
+	findings := CheckQA007(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0 (no name = no finding from QA_007)", len(findings))
 	}
@@ -333,7 +333,7 @@ func TestQA008_TooLarge(t *testing.T) {
 		Content:  content,
 		Parsed:   map[string]any{},
 	}
-	findings := CheckQA008(doc)
+	findings := CheckQA008(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1", len(findings))
 	}
@@ -353,7 +353,7 @@ func TestQA008_SmallEnough(t *testing.T) {
 		Content:  content,
 		Parsed:   map[string]any{},
 	}
-	findings := CheckQA008(doc)
+	findings := CheckQA008(doc, defaultRC())
 	if len(findings) != 0 {
 		t.Errorf("got %d findings, want 0", len(findings))
 	}
@@ -375,7 +375,7 @@ func TestQA008_AppliesToAllFileTypes(t *testing.T) {
 			Content:  content,
 			Parsed:   map[string]any{},
 		}
-		findings := CheckQA008(doc)
+		findings := CheckQA008(doc, defaultRC())
 		if len(findings) != 1 {
 			t.Errorf("file_type=%s: got %d findings, want 1", ft, len(findings))
 		}
@@ -392,7 +392,7 @@ func TestQA003_ExactlyMinLength(t *testing.T) {
 	// Default min is 20 chars — exactly 20 should pass
 	content := "---\nname: test\ndescription: exactly twenty chars\n---\nBody content here."
 	doc := newSkillDoc(content)
-	findings := CheckQA003(doc)
+	findings := CheckQA003(doc, defaultRC())
 	if len(findings) > 0 {
 		t.Error("description with exactly min_description_length should not trigger")
 	}

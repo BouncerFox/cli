@@ -26,7 +26,7 @@ var permissiveFlagRe = regexp.MustCompile(
 )
 
 // CheckCFG001 checks for unrestricted bash tool in allowedTools.
-func CheckCFG001(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckCFG001(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
 		return nil
 	}
@@ -57,7 +57,7 @@ func CheckCFG001(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckCFG002 checks for Write tool in allowedTools.
-func CheckCFG002(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckCFG002(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
 		return nil
 	}
@@ -88,7 +88,7 @@ func CheckCFG002(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckCFG003 checks for mcp__* wildcard patterns in allowedTools.
-func CheckCFG003(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckCFG003(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
 		return nil
 	}
@@ -119,7 +119,7 @@ func CheckCFG003(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckCFG004 checks hook commands for shell injection patterns.
-func CheckCFG004(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckCFG004(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
 		return nil
 	}
@@ -148,7 +148,7 @@ func CheckCFG004(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckCFG005 checks if there are too many allowed tools (> 20).
-func CheckCFG005(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckCFG005(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
 		return nil
 	}
@@ -172,7 +172,7 @@ func CheckCFG005(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckCFG006 checks if deniedTools is missing or empty.
-func CheckCFG006(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckCFG006(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if doc.FileType != document.FileTypeSettingsJSON || hasParseError(doc) {
 		return nil
 	}
@@ -210,7 +210,7 @@ func CheckCFG006(doc *document.ConfigDocument) []document.ScanFinding {
 }
 
 // CheckCFG009 checks for permissive flags in MCP server args and hook commands.
-func CheckCFG009(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckCFG009(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if hasParseError(doc) {
 		return nil
 	}

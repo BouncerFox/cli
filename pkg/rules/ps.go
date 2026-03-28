@@ -5,7 +5,7 @@ import (
 )
 
 // CheckPS004 detects hidden instructions in HTML comments in markdown files.
-func CheckPS004(doc *document.ConfigDocument) []document.ScanFinding {
+func CheckPS004(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	switch doc.FileType {
 	case document.FileTypeSkillMD, document.FileTypeClaudeMD, document.FileTypeAgentMD:
 		// applicable
@@ -13,7 +13,7 @@ func CheckPS004(doc *document.ConfigDocument) []document.ScanFinding {
 		return nil
 	}
 
-	minLen := getIntParam("PS_004", "min_comment_length", 25)
+	minLen := getIntParam(rc, "PS_004", "min_comment_length", 25)
 
 	body, _ := doc.Parsed["body"].(string)
 	if body == "" {

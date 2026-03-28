@@ -337,7 +337,7 @@ rules:
 }
 
 // TestToScanOptions_ParamsApplied verifies per-rule params are merged into
-// rules.RuleParams when ToScanOptions is called.
+// ScanOptions.RuleParams when ToScanOptions is called.
 func TestToScanOptions_ParamsApplied(t *testing.T) {
 	yaml := `
 rules:
@@ -351,19 +351,16 @@ rules:
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Capture original value.
-	origVal := getRuleParam(t, "SEC_006", "min_base64_length")
+	opts := cfg.ToScanOptions()
 
-	cfg.ToScanOptions()
-
-	// After ToScanOptions the global RuleParams should reflect the override.
-	newVal := getRuleParam(t, "SEC_006", "min_base64_length")
-	if newVal != 99 {
-		t.Errorf("min_base64_length = %v, want 99", newVal)
+	val := opts.RuleParams["SEC_006"]["min_base64_length"]
+	if val != 99 {
+		t.Errorf("min_base64_length = %v, want 99", val)
 	}
-
-	// Restore for test isolation.
-	setRuleParam(t, "SEC_006", "min_base64_length", origVal)
+	// Default params should be preserved for other rules.
+	if opts.RuleParams["QA_003"]["min_description_length"] != 20 {
+		t.Error("default params should be preserved")
+	}
 }
 
 // TestSeverityFloorCriticalFloor verifies that CRITICAL rules cannot be
@@ -483,14 +480,3 @@ func TestParseConfigBytes(t *testing.T) {
 	}
 }
 
-// helpers to access rules.RuleParams without importing rules in the test file.
-
-func getRuleParam(t *testing.T, ruleID, key string) any {
-	t.Helper()
-	return config.GetRuleParam(ruleID, key)
-}
-
-func setRuleParam(t *testing.T, ruleID, key string, val any) {
-	t.Helper()
-	config.SetRuleParam(ruleID, key, val)
-}

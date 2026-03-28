@@ -68,5 +68,5 @@ type RuleMetadata struct {
 	Remediation      string
 	DefaultSeverity  FindingSeverity
 	DefaultFileTypes []string
-	Check            func(*ConfigDocument) []ScanFinding
+	Check            func(*ConfigDocument, *RuleContext) []ScanFinding
 }

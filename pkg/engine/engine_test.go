@@ -1,6 +1,7 @@
 package engine_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -8,7 +9,12 @@ import (
 	"github.com/bouncerfox/cli/pkg/engine"
 	"github.com/bouncerfox/cli/pkg/fingerprint"
 	"github.com/bouncerfox/cli/pkg/parser"
+	"github.com/bouncerfox/cli/pkg/rules"
 )
+
+func defaultOpts() engine.ScanOptions {
+	return engine.ScanOptions{RuleParams: rules.DefaultRuleParams()}
+}
 
 // makeSkill returns a parsed skill_md document with the given content.
 func makeSkill(t *testing.T, content string) *document.ConfigDocument {
@@ -47,7 +53,7 @@ func TestScan_BasicFindings(t *testing.T) {
 		"Use this skill.\n"
 	doc := makeSkill(t, content)
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 
 	if result.FilesScanned != 1 {
 		t.Errorf("FilesScanned = %d, want 1", result.FilesScanned)
@@ -64,7 +70,7 @@ func TestScan_FindingsContainExpectedRuleID(t *testing.T) {
 		"token: ghp_abcdefghijklmnopqrstuvwxyz0123456789\n"
 	doc := makeSkill(t, content)
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 
 	found := false
 	for _, f := range result.Findings {
@@ -88,7 +94,7 @@ func TestScan_SEC001RunsBeforeSEC006(t *testing.T) {
 		"key: sk-abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789xy\n"
 	doc := makeSkill(t, content)
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 
 	sec001Count := 0
 	sec006Count := 0
@@ -116,8 +122,9 @@ func TestScan_EnabledRulesFilter(t *testing.T) {
 		"token: ghp_abcdefghijklmnopqrstuvwxyz0123456789\n"
 	doc := makeSkill(t, content)
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		EnabledRules: []string{"QA_001"},
+		RuleParams:   rules.DefaultRuleParams(),
 	})
 
 	for _, f := range result.Findings {
@@ -133,8 +140,9 @@ func TestScan_DisabledRulesFilter(t *testing.T) {
 		"token: ghp_abcdefghijklmnopqrstuvwxyz0123456789\n"
 	doc := makeSkill(t, content)
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		DisabledRules: []string{"SEC_001"},
+		RuleParams:    rules.DefaultRuleParams(),
 	})
 
 	for _, f := range result.Findings {
@@ -152,8 +160,9 @@ func TestScan_SeverityFloor(t *testing.T) {
 	doc := makeSkill(t, content)
 
 	// Floor at warn: info-level findings should be suppressed.
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		SeverityFloor: document.SeverityWarn,
+		RuleParams:    rules.DefaultRuleParams(),
 	})
 
 	for _, f := range result.Findings {
@@ -171,8 +180,9 @@ func TestScan_MaxFindings(t *testing.T) {
 		"Visit https://evil.example.com/\n"
 	doc := makeSkill(t, content)
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		MaxFindings: 1,
+		RuleParams:  rules.DefaultRuleParams(),
 	})
 
 	if len(result.Findings) > 1 {
@@ -187,7 +197,7 @@ func TestScan_SuppressionMap(t *testing.T) {
 	doc := makeSkill(t, content)
 
 	// First scan to get the fingerprint.
-	first := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	first := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 	suppressed := make(map[string]bool)
 	for _, f := range first.Findings {
 		if f.RuleID == "SEC_001" {
@@ -196,8 +206,9 @@ func TestScan_SuppressionMap(t *testing.T) {
 	}
 
 	// Second scan with the suppression map.
-	second := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	second := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		SuppressionMap: suppressed,
+		RuleParams:     rules.DefaultRuleParams(),
 	})
 
 	for _, f := range second.Findings {
@@ -215,7 +226,7 @@ func TestScan_Deduplication(t *testing.T) {
 	doc := makeSkill(t, content)
 	doc2 := makeSkill(t, content)
 
-	result := engine.Scan([]*document.ConfigDocument{doc, doc2}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc, doc2}, defaultOpts())
 
 	counts := make(map[string]int)
 	for _, f := range result.Findings {
@@ -235,8 +246,9 @@ func TestScan_FileTypeFilter(t *testing.T) {
 		"allowedTools: [\"Bash\"]\n"
 	doc := makeSkill(t, content)
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		EnabledRules: []string{"CFG_001"},
+		RuleParams:   rules.DefaultRuleParams(),
 	})
 
 	if len(result.Findings) > 0 {
@@ -250,8 +262,9 @@ func TestScan_SettingsJSONRules(t *testing.T) {
 	content := `{"allowedTools": ["Bash"]}`
 	doc := makeSettings(t, content)
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		EnabledRules: []string{"CFG_001"},
+		RuleParams:   rules.DefaultRuleParams(),
 	})
 
 	found := false
@@ -277,8 +290,9 @@ func TestScan_MCPJSONRules(t *testing.T) {
 }`
 	doc := makeMCP(t, content)
 
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
 		EnabledRules: []string{"SEC_014"},
+		RuleParams:   rules.DefaultRuleParams(),
 	})
 
 	found := false
@@ -298,7 +312,7 @@ func TestScan_MultipleDocuments(t *testing.T) {
 	skill := makeSkill(t, "---\nname: ok\ndescription: A skill that does things nicely.\n---\nDo this.\n")
 	settings := makeSettings(t, `{"allowedTools": ["Read"]}`)
 
-	result := engine.Scan([]*document.ConfigDocument{skill, settings}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{skill, settings}, defaultOpts())
 
 	if result.FilesScanned != 2 {
 		t.Errorf("FilesScanned = %d, want 2", result.FilesScanned)
@@ -307,7 +321,7 @@ func TestScan_MultipleDocuments(t *testing.T) {
 
 // TestScan_EmptyDocs verifies that an empty document list returns a zero result.
 func TestScan_EmptyDocs(t *testing.T) {
-	result := engine.Scan(nil, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), nil, defaultOpts())
 
 	if result.FilesScanned != 0 {
 		t.Errorf("FilesScanned = %d, want 0", result.FilesScanned)
@@ -325,15 +339,28 @@ func TestScan_NilDocInSlice(t *testing.T) {
 			t.Errorf("Scan panicked on nil doc: %v", r)
 		}
 	}()
-	_ = engine.Scan(docs, engine.ScanOptions{})
+	_ = engine.Scan(context.Background(), docs, defaultOpts())
 }
 
 // TestScan_EmptyContent verifies the engine handles a document with empty content.
 func TestScan_EmptyContent(t *testing.T) {
 	doc := makeSkill(t, "")
-	result := engine.Scan([]*document.ConfigDocument{doc}, engine.ScanOptions{})
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, defaultOpts())
 	if result.FilesScanned != 1 {
 		t.Errorf("expected 1 file scanned, got %d", result.FilesScanned)
+	}
+}
+
+// TestScan_ContextCancellation verifies that a cancelled context stops the scan early.
+func TestScan_ContextCancellation(t *testing.T) {
+	content := "---\nname: bad\ndescription: A skill\n---\n" +
+		"token: ghp_abcdefghijklmnopqrstuvwxyz0123456789\n"
+	doc := makeSkill(t, content)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	result := engine.Scan(ctx, []*document.ConfigDocument{doc}, defaultOpts())
+	if result.FilesScanned > 0 {
+		t.Errorf("expected 0 files scanned with cancelled context, got %d", result.FilesScanned)
 	}
 }
 

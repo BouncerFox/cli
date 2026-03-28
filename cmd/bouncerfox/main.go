@@ -290,7 +290,7 @@ func newScanCmd() *cobra.Command {
 			}
 
 			// Run scan.
-			result := engine.Scan(docs, opts)
+			result := engine.Scan(ctx, docs, opts)
 
 			// Compute scan duration.
 			scanDuration := time.Since(scanStart)

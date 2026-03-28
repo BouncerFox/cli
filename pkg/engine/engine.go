@@ -3,6 +3,7 @@
 package engine
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/bouncerfox/cli/pkg/document"
@@ -62,16 +63,12 @@ func locationKey(filePath string, line any) string {
 // Scan runs all applicable rules from rules.Registry against each document in
 // docs, then applies rule-to-rule suppression, severity overrides, severity
 // floor, deduplication, and caps.
-//
-// WARNING: rules.RuleParams is global mutable state. config.ToScanOptions()
-// mutates it before Scan() is called. This means Scan is NOT safe for
-// concurrent use with different configs. If we ever need concurrent scans
-// with different configs, RuleParams must be passed per-scan.
-func Scan(docs []*document.ConfigDocument, opts ScanOptions) ScanResult {
+func Scan(ctx context.Context, docs []*document.ConfigDocument, opts ScanOptions) ScanResult {
 	enabledSet := makeStringSet(opts.EnabledRules)
 	disabledSet := makeStringSet(opts.DisabledRules)
 
 	rulesRunSet := make(map[string]bool)
+	rc := &document.RuleContext{Ctx: ctx, Params: opts.RuleParams}
 
 	// Phase 1: Run all rules, collect raw findings per document.
 	type rawFinding struct {
@@ -84,6 +81,9 @@ func Scan(docs []*document.ConfigDocument, opts ScanOptions) ScanResult {
 	for _, doc := range docs {
 		if doc == nil {
 			continue
+		}
+		if ctx.Err() != nil {
+			break
 		}
 		filesScanned++
 		// Track which rule fired on which file+line for suppression.
@@ -107,9 +107,12 @@ func Scan(docs []*document.ConfigDocument, opts ScanOptions) ScanResult {
 			if rule.Check == nil {
 				continue
 			}
+			if ctx.Err() != nil {
+				break
+			}
 
 			rulesRunSet[rule.ID] = true
-			findings := rule.Check(doc)
+			findings := rule.Check(doc, rc)
 
 			for _, f := range findings {
 				// Apply severity override if configured.

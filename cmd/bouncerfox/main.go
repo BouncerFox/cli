@@ -96,11 +96,13 @@ func newScanCmd() *cobra.Command {
 			}
 
 			// Load local config.
-			configDir := "."
+			var cfg *config.Config
+			var err error
 			if configFlag != "" {
-				configDir = filepath.Dir(configFlag)
+				cfg, err = config.LoadProjectConfig(filepath.Dir(configFlag))
+			} else {
+				cfg, err = config.LoadConfig(".")
 			}
-			cfg, err := config.LoadConfig(configDir)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
@@ -549,6 +551,7 @@ ignore:
   - "node_modules/**"
   - "vendor/**"
   - ".git/**"
+  - "plugins/marketplaces/**"
 
 # rules: per-rule overrides (enabled, severity, params, file_types)
 # rules:

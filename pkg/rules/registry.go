@@ -376,6 +376,16 @@ var Registry = []document.RuleMetadata{
 		DefaultFileTypes: []string{document.FileTypeSettingsJSON, document.FileTypeMCPJSON, document.FileTypeHooksJSON, document.FileTypeLSPJSON},
 		Check:            CheckCFG009,
 	},
+	{
+		ID:               "SEC_021",
+		Name:             "Dangerous Import Reference",
+		Category:         "security",
+		Description:      "File imports content from a path that traverses upward, uses an absolute path, or targets known sensitive locations",
+		Remediation:      "Remove the dangerous import. Do not import files outside the project directory or from sensitive locations.",
+		DefaultSeverity:  document.SeverityHigh,
+		DefaultFileTypes: mdFileTypes,
+		Check:            CheckSEC021,
+	},
 	// ── Prompt Safety ───────────────────────────────────────────────────
 	{
 		ID:               "PS_004",

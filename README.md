@@ -37,6 +37,26 @@ go install github.com/bouncerfox/cli/cmd/bouncerfox@latest
 Releases also ship standalone binaries for Linux, macOS, and Windows via
 [GitHub Releases](https://github.com/bouncerfox/cli/releases).
 
+### Build from Source
+
+Requires Go 1.24+.
+
+```bash
+# Clone and build
+git clone https://github.com/bouncerfox/cli.git
+cd cli
+go build -o bouncerfox ./cmd/bouncerfox
+
+# Or install directly into $GOPATH/bin
+go install ./cmd/bouncerfox
+
+# Build with version tag
+go build -ldflags "-X main.version=v0.2.0" -o bouncerfox ./cmd/bouncerfox
+
+# Run tests
+go test ./... -race
+```
+
 ## Quick Start
 
 ```bash

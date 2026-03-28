@@ -61,7 +61,7 @@ var testFindings = []document.ScanFinding{
 
 func TestFormatTable_ContainsRuleIDs(t *testing.T) {
 	var buf bytes.Buffer
-	if err := output.FormatTable(testFindings, &buf); err != nil {
+	if err := output.FormatTable(testFindings, &buf, output.FormatOptions{}); err != nil {
 		t.Fatalf("FormatTable returned error: %v", err)
 	}
 	out := buf.String()
@@ -74,7 +74,7 @@ func TestFormatTable_ContainsRuleIDs(t *testing.T) {
 
 func TestFormatTable_ContainsMessages(t *testing.T) {
 	var buf bytes.Buffer
-	if err := output.FormatTable(testFindings, &buf); err != nil {
+	if err := output.FormatTable(testFindings, &buf, output.FormatOptions{}); err != nil {
 		t.Fatalf("FormatTable returned error: %v", err)
 	}
 	out := buf.String()
@@ -87,12 +87,12 @@ func TestFormatTable_ContainsMessages(t *testing.T) {
 
 func TestFormatTable_ContainsSummary(t *testing.T) {
 	var buf bytes.Buffer
-	if err := output.FormatTable(testFindings, &buf); err != nil {
+	if err := output.FormatTable(testFindings, &buf, output.FormatOptions{}); err != nil {
 		t.Fatalf("FormatTable returned error: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "4 finding") {
-		t.Errorf("expected summary with '4 finding', got:\n%s", out)
+	if !strings.Contains(out, "4 findings") {
+		t.Errorf("expected summary with '4 findings', got:\n%s", out)
 	}
 	// counts per severity
 	if !strings.Contains(out, "1 critical") {
@@ -111,7 +111,7 @@ func TestFormatTable_ContainsSummary(t *testing.T) {
 
 func TestFormatTable_ContainsFileLine(t *testing.T) {
 	var buf bytes.Buffer
-	if err := output.FormatTable(testFindings, &buf); err != nil {
+	if err := output.FormatTable(testFindings, &buf, output.FormatOptions{}); err != nil {
 		t.Fatalf("FormatTable returned error: %v", err)
 	}
 	out := buf.String()
@@ -122,7 +122,7 @@ func TestFormatTable_ContainsFileLine(t *testing.T) {
 
 func TestFormatTable_ContainsRemediation(t *testing.T) {
 	var buf bytes.Buffer
-	if err := output.FormatTable(testFindings, &buf); err != nil {
+	if err := output.FormatTable(testFindings, &buf, output.FormatOptions{}); err != nil {
 		t.Fatalf("FormatTable returned error: %v", err)
 	}
 	out := buf.String()
@@ -135,12 +135,12 @@ func TestFormatTable_ContainsRemediation(t *testing.T) {
 
 func TestFormatTable_Empty(t *testing.T) {
 	var buf bytes.Buffer
-	if err := output.FormatTable(nil, &buf); err != nil {
+	if err := output.FormatTable(nil, &buf, output.FormatOptions{}); err != nil {
 		t.Fatalf("FormatTable with nil returned error: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "0 finding") {
-		t.Errorf("expected '0 finding' in empty summary, got:\n%s", out)
+	if !strings.Contains(out, "No findings") {
+		t.Errorf("expected 'No findings' in empty summary, got:\n%s", out)
 	}
 }
 

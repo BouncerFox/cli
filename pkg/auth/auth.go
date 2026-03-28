@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/bouncerfox/cli/pkg/configdir"
 )
 
 const defaultPlatformURL = "https://api.bouncerfox.dev"
@@ -36,22 +38,13 @@ func PlatformURL() string {
 	return defaultPlatformURL
 }
 
-// configDir returns the config directory, respecting BOUNCERFOX_CONFIG_DIR env var.
-func configDir() string {
-	if d := os.Getenv("BOUNCERFOX_CONFIG_DIR"); d != "" {
-		return d
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "bouncerfox")
-}
-
 func credentialsPath() string {
-	return filepath.Join(configDir(), "credentials")
+	return filepath.Join(configdir.Dir(), "credentials")
 }
 
 // SaveCredentials writes the API key to the credentials file.
 func SaveCredentials(apiKey string) error {
-	dir := configDir()
+	dir := configdir.Dir()
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}

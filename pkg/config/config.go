@@ -30,6 +30,11 @@ type RuleConfig struct {
 
 	// Params overrides individual rule parameters.
 	Params map[string]any `yaml:"params"`
+
+	// FileTypes narrows which file types the rule runs on. Must be a subset of
+	// the rule's DefaultFileTypes — any file type not in DefaultFileTypes is
+	// silently dropped (intersection semantics).
+	FileTypes []string `yaml:"file_types"`
 }
 
 // Config is the parsed representation of .bouncerfox.yml.
@@ -120,9 +125,10 @@ type rawConfig struct {
 }
 
 type rawRuleConfig struct {
-	Enabled  *bool          `yaml:"enabled"`
-	Severity string         `yaml:"severity"`
-	Params   map[string]any `yaml:"params"`
+	Enabled   *bool          `yaml:"enabled"`
+	Severity  string         `yaml:"severity"`
+	Params    map[string]any `yaml:"params"`
+	FileTypes []string       `yaml:"file_types"`
 }
 
 // parseRawConfig converts a rawConfig into a validated Config.
@@ -166,9 +172,10 @@ func parseRawConfig(raw rawConfig) (*Config, error) {
 		}
 
 		cfg.Rules[id] = RuleConfig{
-			Enabled:  rc.Enabled,
-			Severity: sv,
-			Params:   rc.Params,
+			Enabled:   rc.Enabled,
+			Severity:  sv,
+			Params:    rc.Params,
+			FileTypes: rc.FileTypes,
 		}
 	}
 
@@ -217,6 +224,33 @@ func readConfigFile(dir string) ([]byte, error) {
 	return nil, nil
 }
 
+// defaultFileTypesForRule returns the DefaultFileTypes slice for a rule by ID,
+// or nil if the rule is not found in the registry.
+func defaultFileTypesForRule(id string) []string {
+	for i := range rules.Registry {
+		if rules.Registry[i].ID == id {
+			return rules.Registry[i].DefaultFileTypes
+		}
+	}
+	return nil
+}
+
+// intersectFileTypes returns the elements of requested that also appear in
+// defaults (order-preserving, intersection semantics).
+func intersectFileTypes(requested, defaults []string) []string {
+	defaultSet := make(map[string]bool, len(defaults))
+	for _, ft := range defaults {
+		defaultSet[ft] = true
+	}
+	var result []string
+	for _, ft := range requested {
+		if defaultSet[ft] {
+			result = append(result, ft)
+		}
+	}
+	return result
+}
+
 // ToScanOptions translates the Config into engine.ScanOptions.
 // floorRules are the rule IDs that can never be disabled (unless NoFloor is
 // set). These protect against the most dangerous classes of finding:
@@ -249,6 +283,7 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 		}
 	}
 
+	fileTypeOverrides := make(map[string][]string)
 	for id, rc := range c.Rules {
 		if rc.Enabled != nil && !*rc.Enabled {
 			disabled = append(disabled, id)
@@ -275,6 +310,14 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 				ruleParams[id][k] = v
 			}
 		}
+
+		if len(rc.FileTypes) > 0 {
+			defaults := defaultFileTypesForRule(id)
+			narrowed := intersectFileTypes(rc.FileTypes, defaults)
+			if len(narrowed) > 0 {
+				fileTypeOverrides[id] = narrowed
+			}
+		}
 	}
 
 	if !c.NoFloor {
@@ -287,6 +330,13 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 			filtered = append(filtered, d)
 		}
 		disabled = filtered
+
+		for id := range fileTypeOverrides {
+			if floorRules[id] {
+				fmt.Fprintf(os.Stderr, "warning: critical rule %s file_types override ignored; enforcing floor\n", id)
+				delete(fileTypeOverrides, id)
+			}
+		}
 	}
 
 	return engine.ScanOptions{
@@ -294,5 +344,6 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 		SeverityFloor:     c.SeverityFloor,
 		SeverityOverrides: severityOverrides,
 		RuleParams:        ruleParams,
+		FileTypeOverrides: fileTypeOverrides,
 	}
 }

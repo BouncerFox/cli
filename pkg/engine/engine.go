@@ -37,6 +37,11 @@ type ScanOptions struct {
 	// SuppressionMap is a set of fingerprints to skip. A finding whose
 	// fingerprint is in this map is not included in the result.
 	SuppressionMap map[string]bool
+
+	// FileTypeOverrides narrows per-rule file type applicability. When set for
+	// a rule, only the listed file types are scanned (must be a subset of the
+	// rule's DefaultFileTypes).
+	FileTypeOverrides map[string][]string
 }
 
 // ruleSuppressionMap defines which rules suppress other rules on the same
@@ -95,7 +100,11 @@ func Scan(ctx context.Context, docs []*document.ConfigDocument, opts ScanOptions
 		for i := range rules.Registry {
 			rule := &rules.Registry[i]
 
-			if !fileTypeApplies(rule.DefaultFileTypes, doc.FileType) {
+			applicableTypes := rule.DefaultFileTypes
+			if override, ok := opts.FileTypeOverrides[rule.ID]; ok {
+				applicableTypes = override
+			}
+			if !fileTypeApplies(applicableTypes, doc.FileType) {
 				continue
 			}
 			if len(enabledSet) > 0 && !enabledSet[rule.ID] {

@@ -364,6 +364,27 @@ func TestScan_ContextCancellation(t *testing.T) {
 	}
 }
 
+// TestFileTypeOverrides_NarrowsRule verifies that a FileTypeOverrides entry
+// prevents the rule from firing on a file type not in the override list.
+func TestFileTypeOverrides_NarrowsRule(t *testing.T) {
+	doc := &document.ConfigDocument{
+		FileType: document.FileTypeClaudeMD,
+		FilePath: "CLAUDE.md",
+		Content:  "See https://evil.example.com/malware for details.",
+		Parsed:   map[string]any{},
+	}
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
+		FileTypeOverrides: map[string][]string{
+			"SEC_002": {"skill_md"},
+		},
+	})
+	for _, f := range result.Findings {
+		if f.RuleID == "SEC_002" {
+			t.Error("SEC_002 should not fire on claude_md when narrowed to skill_md")
+		}
+	}
+}
+
 // ruleIDs returns a slice of rule IDs for error messages.
 func ruleIDs(findings []document.ScanFinding) []string {
 	ids := make([]string, len(findings))

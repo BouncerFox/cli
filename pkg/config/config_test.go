@@ -480,3 +480,77 @@ func TestParseConfigBytes(t *testing.T) {
 	}
 }
 
+func TestFileTypesOverride_Narrows(t *testing.T) {
+	data := []byte(`
+rules:
+  SEC_002:
+    file_types: [skill_md, claude_md]
+`)
+	cfg, err := config.ParseConfigBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := cfg.ToScanOptions()
+	ft, ok := opts.FileTypeOverrides["SEC_002"]
+	if !ok {
+		t.Fatal("expected FileTypeOverrides for SEC_002")
+	}
+	if len(ft) != 2 {
+		t.Errorf("expected 2 file types, got %d: %v", len(ft), ft)
+	}
+}
+
+func TestFileTypesOverride_IntersectsWithDefault(t *testing.T) {
+	data := []byte(`
+rules:
+  SEC_009:
+    file_types: [settings_json, plugin_json]
+`)
+	cfg, err := config.ParseConfigBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := cfg.ToScanOptions()
+	ft, ok := opts.FileTypeOverrides["SEC_009"]
+	if !ok {
+		t.Fatal("expected FileTypeOverrides for SEC_009")
+	}
+	for _, f := range ft {
+		if f == "plugin_json" {
+			t.Error("plugin_json should be excluded (not in DefaultFileTypes for SEC_009)")
+		}
+	}
+}
+
+func TestFileTypesOverride_FloorRule_Ignored(t *testing.T) {
+	data := []byte(`
+rules:
+  SEC_001:
+    file_types: [agents_md]
+`)
+	cfg, err := config.ParseConfigBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := cfg.ToScanOptions()
+	if _, ok := opts.FileTypeOverrides["SEC_001"]; ok {
+		t.Error("floor rule SEC_001 should not have file_types override")
+	}
+}
+
+func TestFileTypesOverride_Omitted_NoOverride(t *testing.T) {
+	data := []byte(`
+rules:
+  SEC_002:
+    severity: warn
+`)
+	cfg, err := config.ParseConfigBytes(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := cfg.ToScanOptions()
+	if _, ok := opts.FileTypeOverrides["SEC_002"]; ok {
+		t.Error("should not have FileTypeOverrides when file_types not specified")
+	}
+}
+

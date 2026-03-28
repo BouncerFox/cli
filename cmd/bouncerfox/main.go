@@ -212,13 +212,6 @@ func newScanCmd() *cobra.Command {
 						return nil
 					}
 
-					// Enforce max file count (counts all files, not just governed ones).
-					fileCount++
-					if fileCount >= maxFileCount {
-						fmt.Fprintf(os.Stderr, "warning: file limit (%d) reached; stopping scan\n", maxFileCount)
-						return errStopWalk
-					}
-
 					// Resolve symlinks and verify the real path is within the scan root.
 					realPath, err := filepath.EvalSymlinks(path)
 					if err != nil {
@@ -237,18 +230,6 @@ func newScanCmd() *cobra.Command {
 						return nil
 					}
 
-					// Enforce max file size.
-					// NOTE: TOCTOU between this check and ReadFile below is accepted for a local CLI tool.
-					info, err := d.Info()
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "warning: could not stat %s: %v\n", path, err)
-						return nil
-					}
-					if info.Size() > maxFileSize {
-						fmt.Fprintf(os.Stderr, "warning: skipping %s: file too large (%d bytes)\n", path, info.Size())
-						return nil
-					}
-
 					// Check ignore patterns from config.
 					relPath, _ := filepath.Rel(absRoot, path)
 					for _, pattern := range cfg.Ignore {
@@ -258,6 +239,25 @@ func newScanCmd() *cobra.Command {
 					}
 
 					if !parser.IsGovernedFile(path) {
+						return nil
+					}
+
+					// Enforce max file count on governed files only.
+					fileCount++
+					if fileCount >= maxFileCount {
+						fmt.Fprintf(os.Stderr, "warning: file limit (%d) reached; stopping scan\n", maxFileCount)
+						return errStopWalk
+					}
+
+					// Enforce max file size.
+					// NOTE: TOCTOU between this check and ReadFile below is accepted for a local CLI tool.
+					info, err := d.Info()
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "warning: could not stat %s: %v\n", path, err)
+						return nil
+					}
+					if info.Size() > maxFileSize {
+						fmt.Fprintf(os.Stderr, "warning: skipping %s: file too large (%d bytes)\n", path, info.Size())
 						return nil
 					}
 

@@ -55,6 +55,8 @@ func main() {
 	rootCmd.AddCommand(newInitCmd())
 	rootCmd.AddCommand(newAuthCmd())
 	rootCmd.AddCommand(newConfigCmd())
+	rootCmd.AddCommand(newCompletionCmd())
+	rootCmd.AddCommand(newVersionCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(2)
@@ -594,6 +596,57 @@ func openBrowser(url string) error {
 		}
 	}
 	return fmt.Errorf("could not open browser")
+}
+
+// newCompletionCmd returns the `bouncerfox completion` subcommand.
+func newCompletionCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "completion [bash|zsh|fish|powershell]",
+		Short: "Generate shell completion script",
+		Long: `Generate a shell completion script for the specified shell.
+
+To load completions:
+
+  bash:
+    eval "$(bouncerfox completion bash)"
+
+  zsh:
+    bouncerfox completion zsh > "${fpath[1]}/_bouncerfox"
+
+  fish:
+    bouncerfox completion fish | source
+
+  powershell:
+    bouncerfox completion powershell | Out-String | Invoke-Expression`,
+		Args:      cobra.ExactArgs(1),
+		ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			switch args[0] {
+			case "bash":
+				return cmd.Root().GenBashCompletionV2(os.Stdout, true)
+			case "zsh":
+				return cmd.Root().GenZshCompletion(os.Stdout)
+			case "fish":
+				return cmd.Root().GenFishCompletion(os.Stdout, true)
+			case "powershell":
+				return cmd.Root().GenPowerShellCompletionWithDesc(os.Stdout)
+			default:
+				return fmt.Errorf("unsupported shell %q", args[0])
+			}
+		},
+	}
+	return cmd
+}
+
+// newVersionCmd returns the `bouncerfox version` subcommand.
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the scanner version",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("bouncerfox %s\n", version)
+		},
+	}
 }
 
 // newConfigCmd returns the `bouncerfox config` subcommand group.

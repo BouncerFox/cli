@@ -103,7 +103,58 @@ Example rule IDs: `SEC_001` (hardcoded secret), `SEC_018` (high-entropy string),
 
 Run `bouncerfox rules` for the full list with severities and descriptions.
 
-## Config (`.bouncerfox.yml`)
+## Configuration
+
+BouncerFox loads config from two locations, merged together:
+
+| Scope | Location | Purpose |
+|-------|----------|---------|
+| Global | `~/.config/bouncerfox/config.yml` | User-wide defaults (ignore patterns, allowlists, rule overrides) |
+| Project | `.bouncerfox.yml` | Project-specific settings (committed to repo) |
+
+Override the global config directory with `BOUNCERFOX_CONFIG_DIR`.
+When `--config` is provided, only that file is used (global config is skipped).
+
+### Config Layering
+
+When both global and project configs exist, they are merged:
+
+- **Scalars** (`profile`, `severity_floor`): project wins if set, otherwise global
+- **Lists** (`ignore`): combined from both (additive, deduplicated)
+- **Rules**: deep-merged per rule ID — project overrides specific fields, unset fields inherit from global
+- **Rule params**: replaced wholesale — project params for a rule replace global params entirely
+- **CLI flags**: always override both config files
+- **Platform config** (connected mode): overrides all local config
+
+Example — global config sets org-wide defaults:
+
+```yaml
+# ~/.config/bouncerfox/config.yml
+ignore:
+  - "plugins/marketplaces/**"
+rules:
+  SEC_002:
+    params:
+      url_allowlist:
+        - "https://internal.corp.com"
+```
+
+Project config adds project-specific settings:
+
+```yaml
+# .bouncerfox.yml
+profile: recommended
+severity_floor: warn
+ignore:
+  - "vendor/**"
+rules:
+  SEC_002:
+    severity: warn
+```
+
+Merged result: both ignore patterns apply, SEC_002 gets `warn` severity from project and `url_allowlist` from global.
+
+### Config Options
 
 ```yaml
 # profile: "recommended" (default) or "all_rules"
@@ -127,14 +178,13 @@ rules:
     params:
       url_allowlist:
         - "https://api.example.com"
+    file_types: [skill_md, claude_md]  # narrow which file types this rule checks
   SEC_018:
     enabled: true
     params:
       min_entropy: 4.5        # entropy threshold for SEC_018
   QA_001:
     enabled: false            # disable a rule entirely
-  SEC_002:
-    file_types: [skill_md, claude_md]  # narrow which file types this rule checks
 ```
 
 CLI flags override config file values. Config file overrides profile defaults.
@@ -143,6 +193,7 @@ CLI flags override config file values. Config file overrides profile defaults.
 `all_rules` enables every rule. Per-rule overrides in `rules:` are applied on top of the profile.
 
 **Severity floors:** Critical rules (`SEC_001`, `SEC_003`, `SEC_004`) cannot be downgraded below HIGH.
+Floor rules also ignore `file_types` overrides.
 
 ## Custom Rules
 

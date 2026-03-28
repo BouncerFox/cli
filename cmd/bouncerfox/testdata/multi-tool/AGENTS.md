@@ -1,0 +1,2 @@
+# Agent Config
+password = "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"

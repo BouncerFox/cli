@@ -321,3 +321,42 @@ func TestOffline_FailClosed_Exit2(t *testing.T) {
 		t.Errorf("offline fail-closed: expected exit 2, got %d", code)
 	}
 }
+
+func TestScan_MultiTool_DetectsFindings(t *testing.T) {
+	stdout, _, code := runBinary(t, []string{"scan", "testdata/multi-tool"})
+	if code != 1 {
+		t.Errorf("scan multi-tool: expected exit 1, got %d", code)
+	}
+	if !strings.Contains(stdout, "SEC_001") {
+		t.Error("should detect SEC_001 in .cursorrules or AGENTS.md")
+	}
+	if !strings.Contains(stdout, "SEC_002") {
+		t.Error("should detect SEC_002 in .windsurfrules or copilot-instructions.md")
+	}
+}
+
+func TestScan_ClaudeExtended_DetectsFindings(t *testing.T) {
+	stdout, _, code := runBinary(t, []string{"scan", "testdata/claude-extended"})
+	if code != 1 {
+		t.Errorf("scan claude-extended: expected exit 1, got %d", code)
+	}
+	if !strings.Contains(stdout, "SEC_001") {
+		t.Error("should detect SEC_001 in .claude/rules/security.md")
+	}
+	if !strings.Contains(stdout, "SEC_009") {
+		t.Error("should detect SEC_009 in hooks/hooks.json")
+	}
+	if !strings.Contains(stdout, "SEC_011") {
+		t.Error("should detect SEC_011 in .lsp.json")
+	}
+}
+
+func TestScan_ImportRef_DetectsFindings(t *testing.T) {
+	stdout, _, code := runBinary(t, []string{"scan", "testdata/import-ref"})
+	if code != 1 {
+		t.Errorf("scan import-ref: expected exit 1, got %d", code)
+	}
+	if !strings.Contains(stdout, "SEC_021") {
+		t.Error("should detect SEC_021 for dangerous imports")
+	}
+}

@@ -158,12 +158,24 @@ func CheckSEC020(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 }
 
 func getURLAllowlist(rc *document.RuleContext) []string {
-	if rc != nil && rc.Params != nil {
-		if p, ok := rc.Params["SEC_002"]; ok {
-			if al, ok := p["url_allowlist"].([]string); ok {
-				return al
+	if rc == nil || rc.Params == nil {
+		return nil
+	}
+	p, ok := rc.Params["SEC_002"]
+	if !ok {
+		return nil
+	}
+	switch al := p["url_allowlist"].(type) {
+	case []string:
+		return al
+	case []any:
+		var result []string
+		for _, v := range al {
+			if s, ok := v.(string); ok {
+				result = append(result, s)
 			}
 		}
+		return result
 	}
 	return nil
 }

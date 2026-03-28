@@ -1030,3 +1030,54 @@ func TestSEC018_BelowThreshold(t *testing.T) {
 		t.Error("SEC_018 should not fire on low-entropy repetitive string")
 	}
 }
+
+func TestGetURLAllowlist_YAMLType(t *testing.T) {
+	rc := &document.RuleContext{
+		Params: map[string]map[string]any{
+			"SEC_002": {
+				"url_allowlist": []any{"claude.com", "anthropic.com"},
+			},
+		},
+	}
+	allowlist := getURLAllowlist(rc)
+	if len(allowlist) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(allowlist))
+	}
+	if allowlist[0] != "claude.com" {
+		t.Errorf("allowlist[0] = %q, want claude.com", allowlist[0])
+	}
+}
+
+func TestGetURLAllowlist_NativeStringSlice(t *testing.T) {
+	rc := &document.RuleContext{
+		Params: map[string]map[string]any{
+			"SEC_002": {
+				"url_allowlist": []string{"github.com", "localhost"},
+			},
+		},
+	}
+	allowlist := getURLAllowlist(rc)
+	if len(allowlist) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(allowlist))
+	}
+}
+
+func TestCheckSEC002_YAMLAllowlistFilters(t *testing.T) {
+	doc := &document.ConfigDocument{
+		FileType: document.FileTypeClaudeMD,
+		FilePath: "CLAUDE.md",
+		Content:  "See https://claude.com/docs for details.",
+		Parsed:   map[string]any{},
+	}
+	rc := &document.RuleContext{
+		Params: map[string]map[string]any{
+			"SEC_002": {
+				"url_allowlist": []any{"claude.com"},
+			},
+		},
+	}
+	findings := CheckSEC002(doc, rc)
+	if len(findings) != 0 {
+		t.Error("YAML-sourced allowlist should filter claude.com URL")
+	}
+}

@@ -241,6 +241,14 @@ List all registered rules with ID, severity, category, and description.
 
 Generate a default `.bouncerfox.yml` in the current directory. Fails if one already exists.
 
+### `bouncerfox version`
+
+Print the scanner version.
+
+### `bouncerfox completion [bash|zsh|fish|powershell]`
+
+Generate a shell completion script for the specified shell.
+
 ### `bouncerfox auth`
 
 Authenticate with the BouncerFox platform. Opens a browser to obtain an API key and
@@ -317,6 +325,34 @@ bouncerfox scan .
 - Symlinks pointing outside the scan root are rejected
 - Custom rule regex uses RE2 — no ReDoS risk
 - Signed binaries with SLSA provenance attestation; verify with `gh attestation verify`
+
+## Shell Completions
+
+Generate tab-completion scripts for your shell:
+
+```bash
+# Bash — add to ~/.bashrc
+eval "$(bouncerfox completion bash)"
+
+# Zsh — add to ~/.zshrc (or place in $fpath)
+bouncerfox completion zsh > "${fpath[1]}/_bouncerfox"
+
+# Fish
+bouncerfox completion fish | source
+```
+
+Example:
+
+```
+$ bouncerfox sc<TAB>
+scan
+
+$ bouncerfox scan --fo<TAB>
+--format
+
+$ bouncerfox completion <TAB>
+bash  fish  powershell  zsh
+```
 
 ## License
 

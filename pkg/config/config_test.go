@@ -554,3 +554,151 @@ rules:
 	}
 }
 
+func TestMergeConfigs_ScalarProjectWins(t *testing.T) {
+	global := &config.Config{Profile: "all_rules", SeverityFloor: "warn", Rules: make(map[string]config.RuleConfig)}
+	project := &config.Config{Profile: "recommended", Rules: make(map[string]config.RuleConfig)}
+	merged := config.MergeConfigs(global, project)
+	if merged.Profile != "recommended" {
+		t.Errorf("Profile = %q, want recommended", merged.Profile)
+	}
+}
+
+func TestMergeConfigs_ScalarGlobalFallback(t *testing.T) {
+	global := &config.Config{Profile: "all_rules", SeverityFloor: "warn", Rules: make(map[string]config.RuleConfig)}
+	project := &config.Config{Rules: make(map[string]config.RuleConfig)}
+	merged := config.MergeConfigs(global, project)
+	if merged.SeverityFloor != "warn" {
+		t.Errorf("SeverityFloor = %q, want warn", merged.SeverityFloor)
+	}
+}
+
+func TestMergeConfigs_IgnoreUnion(t *testing.T) {
+	global := &config.Config{Ignore: []string{"plugins/marketplaces/**"}, Rules: make(map[string]config.RuleConfig)}
+	project := &config.Config{Ignore: []string{"vendor/**"}, Rules: make(map[string]config.RuleConfig)}
+	merged := config.MergeConfigs(global, project)
+	if len(merged.Ignore) != 2 {
+		t.Errorf("Ignore count = %d, want 2", len(merged.Ignore))
+	}
+}
+
+func TestMergeConfigs_IgnoreDedup(t *testing.T) {
+	global := &config.Config{Ignore: []string{"vendor/**"}, Rules: make(map[string]config.RuleConfig)}
+	project := &config.Config{Ignore: []string{"vendor/**", "node_modules/**"}, Rules: make(map[string]config.RuleConfig)}
+	merged := config.MergeConfigs(global, project)
+	if len(merged.Ignore) != 2 {
+		t.Errorf("Ignore count = %d, want 2 (deduplicated)", len(merged.Ignore))
+	}
+}
+
+func TestMergeConfigs_RulesDeepMerge(t *testing.T) {
+	trueVal := true
+	global := &config.Config{Rules: map[string]config.RuleConfig{
+		"SEC_002": {Params: map[string]any{"url_allowlist": []string{"claude.com"}}},
+	}}
+	project := &config.Config{Rules: map[string]config.RuleConfig{
+		"SEC_002": {Enabled: &trueVal},
+	}}
+	merged := config.MergeConfigs(global, project)
+	rc := merged.Rules["SEC_002"]
+	if rc.Enabled == nil || !*rc.Enabled {
+		t.Error("Enabled should be true from project")
+	}
+	if rc.Params == nil {
+		t.Fatal("Params should be inherited from global")
+	}
+	if _, ok := rc.Params["url_allowlist"]; !ok {
+		t.Error("url_allowlist should be inherited from global")
+	}
+}
+
+func TestMergeConfigs_ParamsReplacedWholesale(t *testing.T) {
+	global := &config.Config{Rules: map[string]config.RuleConfig{
+		"SEC_002": {Params: map[string]any{"url_allowlist": []string{"claude.com", "anthropic.com"}}},
+	}}
+	project := &config.Config{Rules: map[string]config.RuleConfig{
+		"SEC_002": {Params: map[string]any{"url_allowlist": []string{"internal.corp.com"}}},
+	}}
+	merged := config.MergeConfigs(global, project)
+	al := merged.Rules["SEC_002"].Params["url_allowlist"].([]string)
+	if len(al) != 1 || al[0] != "internal.corp.com" {
+		t.Errorf("Params should be replaced wholesale, got %v", al)
+	}
+}
+
+func TestMergeConfigs_NilGlobal(t *testing.T) {
+	project := &config.Config{Profile: "all_rules", Rules: make(map[string]config.RuleConfig)}
+	merged := config.MergeConfigs(nil, project)
+	if merged.Profile != "all_rules" {
+		t.Errorf("Profile = %q, want all_rules", merged.Profile)
+	}
+}
+
+func TestMergeConfigs_NilProject(t *testing.T) {
+	global := &config.Config{Profile: "all_rules", Rules: make(map[string]config.RuleConfig)}
+	merged := config.MergeConfigs(global, nil)
+	if merged.Profile != "all_rules" {
+		t.Errorf("Profile = %q, want all_rules", merged.Profile)
+	}
+}
+
+func TestMergeConfigs_BothNil(t *testing.T) {
+	merged := config.MergeConfigs(nil, nil)
+	if merged.Profile != "recommended" {
+		t.Errorf("Profile = %q, want recommended", merged.Profile)
+	}
+}
+
+func TestLoadProjectConfig_NoFile(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := config.LoadProjectConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Profile != "recommended" {
+		t.Errorf("Profile = %q, want recommended", cfg.Profile)
+	}
+}
+
+func TestLoadConfig_WithGlobalConfig(t *testing.T) {
+	globalDir := t.TempDir()
+	t.Setenv("BOUNCERFOX_CONFIG_DIR", globalDir)
+
+	if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("ignore:\n  - \"plugins/marketplaces/**\"\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	projectDir := t.TempDir()
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	found := false
+	for _, pattern := range cfg.Ignore {
+		if pattern == "plugins/marketplaces/**" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("global ignore pattern should be present in merged config")
+	}
+}
+
+func TestLoadConfig_MalformedGlobal_WarnsAndContinues(t *testing.T) {
+	globalDir := t.TempDir()
+	t.Setenv("BOUNCERFOX_CONFIG_DIR", globalDir)
+
+	if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("invalid: [yaml: broken"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	projectDir := t.TempDir()
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil {
+		t.Fatal("malformed global should not cause error")
+	}
+	if cfg.Profile != "recommended" {
+		t.Errorf("should fall back to defaults, got profile %q", cfg.Profile)
+	}
+}
+

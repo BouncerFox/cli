@@ -9,6 +9,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/bouncerfox/cli/pkg/configdir"
 	"github.com/bouncerfox/cli/pkg/document"
 	"github.com/bouncerfox/cli/pkg/engine"
 	"github.com/bouncerfox/cli/pkg/rules"
@@ -182,11 +183,9 @@ func parseRawConfig(raw rawConfig) (*Config, error) {
 	return cfg, nil
 }
 
-// LoadConfig searches dir for .bouncerfox.yml or .bouncerfox.yaml, parses it,
-// and returns the validated Config. If no file is found, DefaultConfig is
-// returned. Validation errors (invalid severity values) are returned as errors.
-// Unknown rule IDs are logged as warnings.
-func LoadConfig(dir string) (*Config, error) {
+// LoadProjectConfig loads config from dir only, with no global merge.
+// Used when --config is explicitly provided, and by tests for hermeticity.
+func LoadProjectConfig(dir string) (*Config, error) {
 	data, err := readConfigFile(dir)
 	if err != nil {
 		return nil, err
@@ -195,6 +194,117 @@ func LoadConfig(dir string) (*Config, error) {
 		return DefaultConfig(), nil
 	}
 	return ParseConfigBytes(data)
+}
+
+// loadGlobalConfig returns nil if the global config file is missing or unparseable.
+func loadGlobalConfig() *Config {
+	path := filepath.Join(configdir.Dir(), "config.yml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	cfg, err := ParseConfigBytes(data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not parse %s: %v (skipping global config)\n", path, err)
+		return nil
+	}
+	return cfg
+}
+
+// LoadConfig loads project config from dir, merged with global config.
+// Global config is loaded from configdir.Dir()/config.yml.
+// If global config is missing or malformed, only project config is used.
+func LoadConfig(dir string) (*Config, error) {
+	global := loadGlobalConfig()
+	project, err := LoadProjectConfig(dir)
+	if err != nil {
+		return nil, err
+	}
+	return MergeConfigs(global, project), nil
+}
+
+// MergeConfigs merges global (base) and project (overlay) configs.
+// Scalars: project wins if non-zero. Lists: union (deduplicated by exact string).
+// Rules: deep merge at rule ID level; params replaced wholesale.
+func MergeConfigs(global, project *Config) *Config {
+	if global == nil && project == nil {
+		return DefaultConfig()
+	}
+	if global == nil {
+		return project
+	}
+	if project == nil {
+		return global
+	}
+
+	merged := &Config{
+		Profile:       global.Profile,
+		SeverityFloor: global.SeverityFloor,
+		Target:        global.Target,
+		Ignore:        unionStrings(global.Ignore, project.Ignore),
+		Rules:         make(map[string]RuleConfig),
+	}
+
+	if project.Profile != "" {
+		merged.Profile = project.Profile
+	}
+	if project.SeverityFloor != "" {
+		merged.SeverityFloor = project.SeverityFloor
+	}
+	if project.Target != "" {
+		merged.Target = project.Target
+	}
+	if merged.Profile == "" {
+		merged.Profile = ProfileRecommended
+	}
+
+	for id, rc := range global.Rules {
+		merged.Rules[id] = rc
+	}
+	for id, rc := range project.Rules {
+		if existing, ok := merged.Rules[id]; ok {
+			merged.Rules[id] = mergeRuleConfig(existing, rc)
+		} else {
+			merged.Rules[id] = rc
+		}
+	}
+
+	return merged
+}
+
+func mergeRuleConfig(base, overlay RuleConfig) RuleConfig {
+	result := base
+	if overlay.Enabled != nil {
+		result.Enabled = overlay.Enabled
+	}
+	if overlay.Severity != nil {
+		result.Severity = overlay.Severity
+	}
+	if len(overlay.Params) > 0 {
+		result.Params = overlay.Params
+	}
+	if len(overlay.FileTypes) > 0 {
+		result.FileTypes = overlay.FileTypes
+	}
+	return result
+}
+
+func unionStrings(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	var result []string
+	for _, s := range a {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	for _, s := range b {
+		if !seen[s] {
+			seen[s] = true
+			result = append(result, s)
+		}
+	}
+	return result
 }
 
 // ParseConfigBytes parses a .bouncerfox.yml config from raw bytes.

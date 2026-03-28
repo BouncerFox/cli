@@ -9,9 +9,19 @@ Code never leaves your machine — the scanner runs entirely offline.
 |---|---|
 | `SKILL.md` | Skill definitions with YAML frontmatter |
 | `CLAUDE.md` | Claude context files |
+| `CLAUDE.local.md` | Local Claude context files |
 | `.claude/agents/*.md` | Agent definitions |
+| `.claude/commands/*.md` | Legacy command definitions |
 | `.claude/settings*.json` | Claude settings (permissions, hooks, MCP) |
+| `.claude/rules/**/*.md` | Modular rules with optional paths frontmatter |
+| `.claude-plugin/plugin.json` | Plugin manifests |
+| `hooks/hooks.json` | Plugin hook configuration |
 | `.mcp.json` | MCP server configuration |
+| `.lsp.json` | LSP server configuration |
+| `.cursorrules` | Cursor AI instructions |
+| `.windsurfrules` | Windsurf AI instructions |
+| `.github/copilot-instructions.md` | GitHub Copilot instructions |
+| `AGENTS.md` | Gemini agent definitions |
 
 ## Installation
 
@@ -59,17 +69,17 @@ bouncerfox init
 
 ## Rules
 
-33 built-in rules across four categories:
+34 built-in rules across four categories:
 
 | Category | Prefix | Count | Focus |
 |---|---|---|---|
-| Security | `SEC_` | 15 | Hardcoded secrets, dangerous commands, supply chain, exfiltration |
+| Security | `SEC_` | 16 | Hardcoded secrets, dangerous commands, supply chain, exfiltration |
 | Quality | `QA_` | 10 | Missing fields, thin descriptions, oversized files, binary detection |
 | Config | `CFG_` | 7 | Overly broad permissions, hook injection, MCP misconfig |
 | Prompt Safety | `PS_` | 1 | Hidden HTML comments with embedded instructions |
 
 Example rule IDs: `SEC_001` (hardcoded secret), `SEC_018` (high-entropy string),
-`CFG_001` (unrestricted Bash), `QA_001` (missing description), `PS_004` (hidden HTML comment).
+`CFG_001` (unrestricted Bash), `QA_001` (missing description), `PS_004` (hidden HTML comment), `SEC_021` (dangerous import reference).
 
 Run `bouncerfox rules` for the full list with severities and descriptions.
 
@@ -103,7 +113,8 @@ rules:
       min_entropy: 4.5        # entropy threshold for SEC_018
   QA_001:
     enabled: false            # disable a rule entirely
-    file_types: [skill_md]    # narrow which file types this rule checks
+  SEC_002:
+    file_types: [skill_md, claude_md]  # narrow which file types this rule checks
 ```
 
 CLI flags override config file values. Config file overrides profile defaults.

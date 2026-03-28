@@ -525,16 +525,19 @@ profile: recommended
 # Possible values: info, warn, high, critical (empty = report everything)
 severity_floor: ""
 
-# ignore: list of gitignore-style glob patterns to skip.
-ignore: []
-  # - "vendor/**"
-  # - "**/*.generated.md"
+# ignore: gitignore-style globs to skip during scanning
+ignore:
+  - "node_modules/**"
+  - "vendor/**"
+  - ".git/**"
 
-# rules: per-rule overrides.
+# rules: per-rule overrides (enabled, severity, params, file_types)
 # rules:
 #   SEC_001:
 #     enabled: true
 #     severity: critical
+#   SEC_002:
+#     file_types: [skill_md, claude_md]
 #   QA_001:
 #     enabled: false
 `

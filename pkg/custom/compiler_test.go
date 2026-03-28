@@ -1,6 +1,7 @@
 package custom_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -853,6 +854,114 @@ func mustCompile(t *testing.T, rule map[string]any) custom.CheckFn {
 		t.Fatalf("Compile failed: %v", err)
 	}
 	return fn
+}
+
+// ---------------------------------------------------------------------------
+// Edge-case tests
+// ---------------------------------------------------------------------------
+
+func TestCollectionAny_IterationLimit(t *testing.T) {
+	bigMap := make(map[string]any, 1100)
+	for i := 0; i < 1100; i++ {
+		bigMap[fmt.Sprintf("key_%d", i)] = "val"
+	}
+	rule := makeRule("X001", "info", map[string]any{
+		"type":  "collection_any",
+		"field": "items",
+		"match": map[string]any{"equals": "val"},
+	})
+	fn, err := custom.Compile(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := doc("skill_md", "", map[string]any{"items": bigMap})
+	findings := fn(d)
+	if len(findings) == 0 {
+		t.Error("expected a finding from collection_any on large map")
+	}
+}
+
+func TestLinePattern_EmptyPattern(t *testing.T) {
+	rule := makeRule("X001", "info", map[string]any{
+		"type": "line_pattern", "pattern": "",
+	})
+	_, err := custom.Compile(rule)
+	if err != nil {
+		t.Logf("empty pattern returned error (acceptable): %v", err)
+		return
+	}
+}
+
+func TestLinePatterns_EmptyList(t *testing.T) {
+	rule := makeRule("X001", "info", map[string]any{
+		"type": "line_patterns", "patterns": []any{},
+	})
+	fn, err := custom.Compile(rule)
+	if err != nil {
+		t.Logf("empty patterns list returned error (acceptable): %v", err)
+		return
+	}
+	d := doc("skill_md", "some content\n", nil)
+	findings := fn(d)
+	if len(findings) != 0 {
+		t.Error("empty patterns list should produce no findings")
+	}
+}
+
+func TestContentContains_EmptyValue(t *testing.T) {
+	rule := makeRule("X001", "info", map[string]any{
+		"type": "content_contains", "value": "",
+	})
+	fn, err := custom.Compile(rule)
+	if err != nil {
+		t.Logf("empty value returned error (acceptable): %v", err)
+		return
+	}
+	d := doc("skill_md", "some content\n", nil)
+	findings := fn(d)
+	if len(findings) == 0 {
+		t.Error("expected finding for empty content_contains value")
+	}
+}
+
+func TestCollectionNone_EmptyCollection(t *testing.T) {
+	rule := makeRule("X001", "info", map[string]any{
+		"type": "collection_none", "field": "items",
+		"match": map[string]any{"equals": "bad"},
+	})
+	fn, err := custom.Compile(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d := doc("skill_md", "", map[string]any{})
+	findings := fn(d)
+	_ = findings // either outcome is valid, just don't panic
+}
+
+func TestFieldResolution_DeeplyNested(t *testing.T) {
+	rule := makeRule("X001", "info", map[string]any{
+		"type": "field_equals", "field": "a.b.c.d.e", "value": "deep",
+	})
+	fn, err := custom.Compile(rule)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsed := map[string]any{
+		"a": map[string]any{"b": map[string]any{"c": map[string]any{"d": map[string]any{"e": "deep"}}}},
+	}
+	d := doc("skill_md", "", parsed)
+	findings := fn(d)
+	if len(findings) == 0 {
+		t.Error("expected finding for deeply nested field match")
+	}
+
+	parsed2 := map[string]any{"a": map[string]any{"b": "not-a-map"}}
+	d2 := doc("skill_md", "", parsed2)
+	findings2 := fn(d2)
+	if len(findings2) != 0 {
+		t.Error("broken path should produce no findings")
+	}
 }
 
 // ---------------------------------------------------------------------------

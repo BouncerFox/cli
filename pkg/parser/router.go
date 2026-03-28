@@ -27,7 +27,16 @@ func jsonParser(fileType string) parserFunc {
 	}
 }
 
+func mdParser(fileType string) parserFunc {
+	return func(filePath, content string) *document.ConfigDocument {
+		doc := ParseClaudeMD(filePath, content)
+		doc.FileType = fileType
+		return doc
+	}
+}
+
 var routeTable = []route{
+	// Claude core
 	{regexp.MustCompile(`\.claude/skills/.+/SKILL\.md$`), document.FileTypeSkillMD, fmParser(document.FileTypeSkillMD)},
 	{regexp.MustCompile(`(^|/)CLAUDE\.md$`), document.FileTypeClaudeMD, ParseClaudeMD},
 	{regexp.MustCompile(`(^|/)CLAUDE\.local\.md$`), document.FileTypeClaudeMD, ParseClaudeMD},
@@ -35,6 +44,16 @@ var routeTable = []route{
 	{regexp.MustCompile(`(^|/)\.mcp\.json$`), document.FileTypeMCPJSON, jsonParser(document.FileTypeMCPJSON)},
 	{regexp.MustCompile(`\.claude/agents/[^/]+\.md$`), document.FileTypeAgentMD, fmParser(document.FileTypeAgentMD)},
 	{regexp.MustCompile(`\.claude/commands/[^/]+\.md$`), document.FileTypeSkillMD, fmParser(document.FileTypeSkillMD)},
+	// Claude extended — rules use fmParser because they support paths: frontmatter
+	{regexp.MustCompile(`\.claude/rules/.+\.md$`), document.FileTypeRulesMD, fmParser(document.FileTypeRulesMD)},
+	{regexp.MustCompile(`\.claude-plugin/plugin\.json$`), document.FileTypePluginJSON, jsonParser(document.FileTypePluginJSON)},
+	{regexp.MustCompile(`(^|/)hooks/hooks\.json$`), document.FileTypeHooksJSON, jsonParser(document.FileTypeHooksJSON)},
+	{regexp.MustCompile(`(^|/)\.lsp\.json$`), document.FileTypeLSPJSON, jsonParser(document.FileTypeLSPJSON)},
+	// Other AI tools
+	{regexp.MustCompile(`(^|/)\.cursorrules$`), document.FileTypeCursorRules, mdParser(document.FileTypeCursorRules)},
+	{regexp.MustCompile(`(^|/)\.windsurfrules$`), document.FileTypeWindsurfRules, mdParser(document.FileTypeWindsurfRules)},
+	{regexp.MustCompile(`\.github/copilot-instructions\.md$`), document.FileTypeCopilotMD, mdParser(document.FileTypeCopilotMD)},
+	{regexp.MustCompile(`(^|/)AGENTS\.md$`), document.FileTypeAgentsMD, mdParser(document.FileTypeAgentsMD)},
 }
 
 func validateFilePath(path string) bool {

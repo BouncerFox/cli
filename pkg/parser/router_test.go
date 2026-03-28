@@ -23,6 +23,29 @@ func TestIsGovernedFile(t *testing.T) {
 		{"random-file.txt", false},
 		{"src/main.go", false},
 		{"../../../etc/passwd", false},
+		// Claude extended
+		{".claude/rules/security.md", true},
+		{".claude/rules/sub/testing.md", true},
+		{"sub/.claude/rules/sec.md", true},
+		{".claude-plugin/plugin.json", true},
+		{"hooks/hooks.json", true},
+		{"sub/hooks/hooks.json", true},
+		{".lsp.json", true},
+		{"sub/.lsp.json", true},
+		// Other tools
+		{".cursorrules", true},
+		{"sub/.cursorrules", true},
+		{".windsurfrules", true},
+		{"AGENTS.md", true},
+		{"sub/AGENTS.md", true},
+		{".github/copilot-instructions.md", true},
+		// Negative cases
+		{".claude/rules/.md", false},
+		{"hooks.json", false},
+		{"plugin.json", false},
+		{"lsp.json", false},
+		{"agents.md", false},
+		{"cursorrules", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
@@ -140,6 +163,54 @@ func TestRouteAndParse(t *testing.T) {
 			"root:x:0",
 			"",
 			true,
+		},
+		{
+			".claude/rules/security.md",
+			"---\npaths:\n  - src/**\n---\nDo not commit secrets.",
+			"rules_md",
+			false,
+		},
+		{
+			".claude-plugin/plugin.json",
+			`{"name": "test", "version": "1.0.0"}`,
+			"plugin_json",
+			false,
+		},
+		{
+			"hooks/hooks.json",
+			`{"hooks": {"PreToolUse": [{"command": "echo hi"}]}}`,
+			"hooks_json",
+			false,
+		},
+		{
+			".lsp.json",
+			`{"go": {"command": "gopls", "args": ["serve"]}}`,
+			"lsp_json",
+			false,
+		},
+		{
+			".cursorrules",
+			"Use TypeScript for all new files.",
+			"cursor_rules",
+			false,
+		},
+		{
+			".windsurfrules",
+			"Follow ESLint config.",
+			"windsurf_rules",
+			false,
+		},
+		{
+			"AGENTS.md",
+			"# Agent Config",
+			"agents_md",
+			false,
+		},
+		{
+			".github/copilot-instructions.md",
+			"# Copilot Instructions",
+			"copilot_md",
+			false,
 		},
 	}
 	for _, tt := range tests {

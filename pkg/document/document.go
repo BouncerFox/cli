@@ -31,11 +31,19 @@ func (s FindingSeverity) Level() int {
 }
 
 const (
-	FileTypeSkillMD      = "skill_md"
-	FileTypeClaudeMD     = "claude_md"
-	FileTypeAgentMD      = "agent_md"
-	FileTypeSettingsJSON = "settings_json"
-	FileTypeMCPJSON      = "mcp_json"
+	FileTypeSkillMD       = "skill_md"
+	FileTypeClaudeMD      = "claude_md"
+	FileTypeAgentMD       = "agent_md"
+	FileTypeSettingsJSON  = "settings_json"
+	FileTypeMCPJSON       = "mcp_json"
+	FileTypeRulesMD       = "rules_md"
+	FileTypePluginJSON    = "plugin_json"
+	FileTypeHooksJSON     = "hooks_json"
+	FileTypeLSPJSON       = "lsp_json"
+	FileTypeCursorRules   = "cursor_rules"
+	FileTypeWindsurfRules = "windsurf_rules"
+	FileTypeCopilotMD     = "copilot_md"
+	FileTypeAgentsMD      = "agents_md"
 )
 
 type ConfigDocument struct {

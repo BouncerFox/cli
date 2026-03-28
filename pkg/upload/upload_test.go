@@ -152,3 +152,97 @@ func TestIdempotencyKey_DifferentInputsDiffer(t *testing.T) {
 		t.Error("different targets should produce different keys")
 	}
 }
+
+// ---- Edge-case tests for helpers -----------------------------------------------
+
+func TestBuildWireFindings_EvidenceStringTypes(t *testing.T) {
+	findings := []document.ScanFinding{{
+		RuleID: "SEC_002", Severity: document.SeverityHigh,
+		Message: "test", Evidence: map[string]any{"file": "a.md", "line": 1},
+	}}
+	wire := BuildWireFindings(findings, false, false)
+	if wire[0].File != "a.md" {
+		t.Errorf("expected file a.md, got %q", wire[0].File)
+	}
+
+	findings[0].Evidence["file"] = 42
+	wire = BuildWireFindings(findings, false, false)
+	if wire[0].File != "" {
+		t.Errorf("non-string file should be empty, got %q", wire[0].File)
+	}
+
+	delete(findings[0].Evidence, "file")
+	wire = BuildWireFindings(findings, false, false)
+	if wire[0].File != "" {
+		t.Errorf("missing file key should be empty, got %q", wire[0].File)
+	}
+}
+
+func TestBuildWireFindings_EvidenceIntTypes(t *testing.T) {
+	base := document.ScanFinding{
+		RuleID: "SEC_001", Severity: document.SeverityCritical, Message: "test",
+	}
+
+	base.Evidence = map[string]any{"line": 10}
+	wire := BuildWireFindings([]document.ScanFinding{base}, false, false)
+	if wire[0].Line != 10 {
+		t.Errorf("int line: expected 10, got %d", wire[0].Line)
+	}
+
+	base.Evidence = map[string]any{"line": float64(20)}
+	wire = BuildWireFindings([]document.ScanFinding{base}, false, false)
+	if wire[0].Line != 20 {
+		t.Errorf("float64 line: expected 20, got %d", wire[0].Line)
+	}
+
+	base.Evidence = map[string]any{"line": int64(30)}
+	wire = BuildWireFindings([]document.ScanFinding{base}, false, false)
+	if wire[0].Line != 30 {
+		t.Errorf("int64 line: expected 30, got %d", wire[0].Line)
+	}
+
+	base.Evidence = nil
+	wire = BuildWireFindings([]document.ScanFinding{base}, false, false)
+	if wire[0].Line != 0 {
+		t.Errorf("nil evidence: expected line 0, got %d", wire[0].Line)
+	}
+
+	base.Evidence = map[string]any{"line": "not-a-number"}
+	wire = BuildWireFindings([]document.ScanFinding{base}, false, false)
+	if wire[0].Line != 0 {
+		t.Errorf("string line: expected 0, got %d", wire[0].Line)
+	}
+}
+
+func TestBuildWireFindings_EmptyInput(t *testing.T) {
+	wire := BuildWireFindings(nil, false, false)
+	if len(wire) != 0 {
+		t.Errorf("expected 0 wire findings for nil input, got %d", len(wire))
+	}
+	wire = BuildWireFindings([]document.ScanFinding{}, false, false)
+	if len(wire) != 0 {
+		t.Errorf("expected 0 wire findings for empty input, got %d", len(wire))
+	}
+}
+
+func TestPayload_MessageExactly500(t *testing.T) {
+	exact := strings.Repeat("a", 500)
+	findings := []document.ScanFinding{{
+		RuleID: "QA_001", Severity: document.SeverityWarn, Message: exact,
+	}}
+	wire := BuildWireFindings(findings, false, false)
+	if len(wire[0].Message) != 500 {
+		t.Errorf("500-char message should not be truncated, got %d", len(wire[0].Message))
+	}
+}
+
+func TestPayload_StripPaths_NestedPath(t *testing.T) {
+	findings := []document.ScanFinding{{
+		RuleID: "SEC_001", Severity: document.SeverityCritical,
+		Message: "test", Evidence: map[string]any{"file": "deep/nested/path/to/SKILL.md"},
+	}}
+	wire := BuildWireFindings(findings, true, false)
+	if wire[0].File != "SKILL.md" {
+		t.Errorf("stripPaths nested: expected SKILL.md, got %q", wire[0].File)
+	}
+}

@@ -213,6 +213,3 @@ func evidenceFileAndLine(ev map[string]any) (file string, line int) {
 	return file, line
 }
 
-// writeCodeFrame is implemented in verbose.go (Task 3).
-// This stub allows table.go to compile before verbose.go exists.
-func writeCodeFrame(w io.Writer, rm renderMode, f document.ScanFinding) {}

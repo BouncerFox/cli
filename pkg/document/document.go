@@ -1,5 +1,7 @@
 package document
 
+import "context"
+
 type FindingSeverity string
 
 const (
@@ -50,6 +52,12 @@ type ScanFinding struct {
 	Message     string
 	Evidence    map[string]any
 	Remediation string
+}
+
+// RuleContext carries per-scan state to check functions.
+type RuleContext struct {
+	Ctx    context.Context
+	Params map[string]map[string]any // rule ID → param name → value
 }
 
 type RuleMetadata struct {

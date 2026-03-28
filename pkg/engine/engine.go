@@ -29,6 +29,10 @@ type ScanOptions struct {
 	// MaxFindings caps the total number of findings returned. 0 = unlimited.
 	MaxFindings int
 
+	// RuleParams holds per-rule parameter overrides for this scan.
+	// If nil, rules use their compiled defaults.
+	RuleParams map[string]map[string]any
+
 	// SuppressionMap is a set of fingerprints to skip. A finding whose
 	// fingerprint is in this map is not included in the result.
 	SuppressionMap map[string]bool

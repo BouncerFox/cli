@@ -279,19 +279,27 @@ is available, a check run with per-file annotations is also posted.
 ### Connected mode (platform integration)
 
 When `BOUNCERFOX_API_KEY` is set, the CLI automatically enters connected mode:
-pulls org-level rule config before scanning, uploads findings after, and uses the
-platform's verdict for the exit code.
+pulls org-level rule config before scanning, uploads findings (with PR number and
+skill metadata) after, and uses the platform's verdict for the exit code.
+
+In connected mode, the CLI **does not** post Check Runs or PR comments — the
+platform handles all GitHub feedback via its GitHub App. The `--github-comment`
+flag is ignored. No `GITHUB_TOKEN` is needed.
 
 ```yaml
     steps:
       - uses: actions/checkout@v4
-      - run: bouncerfox scan .
+      - uses: bouncerfox/cli@v1
         env:
           BOUNCERFOX_API_KEY: ${{ secrets.BOUNCERFOX_API_KEY }}
 ```
 
 If the platform is unreachable in CI, the default behavior is **fail-closed** (exit 2).
 Override with `--offline-behavior warn` to fall back to local exit logic.
+
+If the platform returns **409** (scan superseded by a newer commit), the CLI prints a
+warning and falls back to local exit logic. If it returns **402** (subscription lapsed),
+the CLI warns and falls back similarly.
 
 ## CLI Reference
 
@@ -367,8 +375,12 @@ or `bouncerfox auth`). In connected mode the CLI:
 
 1. Pulls org-level rule config from the platform (cached locally with ETag validation)
 2. Runs the scan with merged config (platform config takes priority over local)
-3. Uploads findings to the platform
+3. Uploads findings to the platform (including PR number and skill metadata)
 4. Uses the platform's verdict for the exit code
+
+In connected mode, the platform owns the GitHub Check Run lifecycle — the CLI does not
+post Check Runs or PR comments. This allows the platform to update Check Runs when
+findings are acknowledged.
 
 **What gets sent:** rule IDs, severities, file paths, line numbers, fingerprints, scan metadata.
 **Never sent:** file contents, code snippets, matched secret values, environment variables.

@@ -13,6 +13,7 @@ dist/
 # Config with potential secrets
 .bouncerfox.yml
 .bouncerfox.yaml
+!cmd/bouncerfox/testdata/**/.bouncerfox.yml
 
 # IDE
 .idea/

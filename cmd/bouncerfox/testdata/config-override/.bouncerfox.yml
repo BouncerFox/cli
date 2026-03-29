@@ -1,0 +1,4 @@
+profile: all_rules
+rules:
+  SEC_002:
+    enabled: false

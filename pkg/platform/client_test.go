@@ -131,6 +131,29 @@ func TestValidateHTTPS_AllowsLocalhost(t *testing.T) {
 	}
 }
 
+func TestHTTPClient_Upload_IncludesPRNumber(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		json.Unmarshal(body, &req)
+		if req["pr_number"] != float64(42) {
+			t.Errorf("expected pr_number=42, got %v", req["pr_number"])
+		}
+		w.WriteHeader(201)
+		json.NewEncoder(w).Encode(VerdictResponse{ScanID: "s1", Verdict: "pass"})
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(srv.URL, "bf_test")
+	_, err := c.Upload(context.Background(), UploadRequest{
+		PRNumber:       42,
+		IdempotencyKey: "test",
+	})
+	if err != nil {
+		t.Fatalf("Upload: %v", err)
+	}
+}
+
 func TestValidateHTTPS_StillRejectsRemoteHTTP(t *testing.T) {
 	for _, u := range []string{
 		"http://example.com",

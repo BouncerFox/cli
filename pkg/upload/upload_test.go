@@ -246,3 +246,70 @@ func TestPayload_StripPaths_NestedPath(t *testing.T) {
 		t.Errorf("stripPaths nested: expected SKILL.md, got %q", wire[0].File)
 	}
 }
+
+// ---- ExtractSkillMetadata --------------------------------------------------
+
+func TestExtractSkillMetadata_ExtractsFromSkillDocs(t *testing.T) {
+	docs := []*document.ConfigDocument{
+		{
+			FileType: document.FileTypeSkillMD,
+			FilePath: ".claude/skills/my-skill/SKILL.md",
+			Parsed: map[string]any{
+				"name":        "my-skill",
+				"description": "does something useful",
+				"status":      "stable",
+				"model":       "claude-3-5-sonnet",
+			},
+		},
+		{
+			// non-skill doc — should be ignored
+			FileType: document.FileTypeClaudeMD,
+			FilePath: "CLAUDE.md",
+			Parsed:   map[string]any{"name": "ignored"},
+		},
+	}
+
+	skills := ExtractSkillMetadata(docs)
+	if len(skills) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(skills))
+	}
+	s := skills[0]
+	if s.File != ".claude/skills/my-skill/SKILL.md" {
+		t.Errorf("File: got %q", s.File)
+	}
+	if s.Name != "my-skill" {
+		t.Errorf("Name: got %q", s.Name)
+	}
+	if s.Description != "does something useful" {
+		t.Errorf("Description: got %q", s.Description)
+	}
+	if s.Status != "stable" {
+		t.Errorf("Status: got %q", s.Status)
+	}
+	if s.Model != "claude-3-5-sonnet" {
+		t.Errorf("Model: got %q", s.Model)
+	}
+}
+
+func TestExtractSkillMetadata_NilParsedSkipped(t *testing.T) {
+	docs := []*document.ConfigDocument{
+		{
+			FileType: document.FileTypeSkillMD,
+			FilePath: "SKILL.md",
+			Parsed:   nil,
+		},
+	}
+	skills := ExtractSkillMetadata(docs)
+	if len(skills) != 0 {
+		t.Errorf("expected 0 skills for nil Parsed, got %d", len(skills))
+	}
+}
+
+func TestExtractSkillMetadata_EmptyInput(t *testing.T) {
+	if skills := ExtractSkillMetadata(nil); len(skills) != 0 {
+		t.Errorf("expected 0 skills for nil input, got %d", len(skills))
+	}
+	if skills := ExtractSkillMetadata([]*document.ConfigDocument{}); len(skills) != 0 {
+		t.Errorf("expected 0 skills for empty input, got %d", len(skills))
+	}
+}

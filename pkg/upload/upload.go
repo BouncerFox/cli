@@ -64,6 +64,37 @@ func BuildWireFindings(findings []document.ScanFinding, stripPaths, anonymous bo
 	return out
 }
 
+// ExtractSkillMetadata extracts skill metadata from parsed SKILL.md documents.
+func ExtractSkillMetadata(docs []*document.ConfigDocument) []platform.SkillMetadata {
+	var skills []platform.SkillMetadata
+	for _, doc := range docs {
+		if doc.FileType != document.FileTypeSkillMD {
+			continue
+		}
+		fm := doc.Parsed
+		if fm == nil {
+			continue
+		}
+		skills = append(skills, platform.SkillMetadata{
+			File:        doc.FilePath,
+			Name:        stringFromMap(fm, "name"),
+			Description: stringFromMap(fm, "description"),
+			Status:      stringFromMap(fm, "status"),
+			Model:       stringFromMap(fm, "model"),
+		})
+	}
+	return skills
+}
+
+func stringFromMap(m map[string]any, key string) string {
+	if v, ok := m[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
+}
+
 func evidenceString(ev map[string]any, key string) string {
 	if ev == nil {
 		return ""

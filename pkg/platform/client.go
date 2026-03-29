@@ -18,24 +18,35 @@ type Client interface {
 	PullConfig(ctx context.Context, req PullConfigRequest) (*PullConfigResponse, error)
 }
 
+// SkillMetadata holds extracted metadata from a SKILL.md document.
+type SkillMetadata struct {
+	File        string `json:"file"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Status      string `json:"status,omitempty"`
+	Model       string `json:"model,omitempty"`
+}
+
 // UploadRequest is the full upload payload.
 type UploadRequest struct {
-	Version        string        `json:"version"`
-	CLIVersion     string        `json:"cli_version"`
-	CLIChecksum    string        `json:"cli_checksum,omitempty"`
-	Target         string        `json:"target,omitempty"`
-	TargetLabel    string        `json:"target_label,omitempty"`
-	CommitSHA      string        `json:"commit_sha,omitempty"`
-	Branch         string        `json:"branch,omitempty"`
-	Trigger        string        `json:"trigger"`
-	Timestamp      string        `json:"timestamp"`
-	DurationMs     int           `json:"duration_ms"`
-	TotalFiles     int           `json:"total_files"`
-	ScannedFiles   int           `json:"scanned_files"`
-	Profile        string        `json:"profile,omitempty"`
-	ConfigHash     string        `json:"config_hash,omitempty"`
-	Findings       []WireFinding `json:"findings"`
-	IdempotencyKey string        `json:"-"` // sent as header, not body
+	Version        string          `json:"version"`
+	CLIVersion     string          `json:"cli_version"`
+	CLIChecksum    string          `json:"cli_checksum,omitempty"`
+	Target         string          `json:"target,omitempty"`
+	TargetLabel    string          `json:"target_label,omitempty"`
+	CommitSHA      string          `json:"commit_sha,omitempty"`
+	Branch         string          `json:"branch,omitempty"`
+	Trigger        string          `json:"trigger"`
+	Timestamp      string          `json:"timestamp"`
+	DurationMs     int             `json:"duration_ms"`
+	TotalFiles     int             `json:"total_files"`
+	ScannedFiles   int             `json:"scanned_files"`
+	Profile        string          `json:"profile,omitempty"`
+	ConfigHash     string          `json:"config_hash,omitempty"`
+	Findings       []WireFinding   `json:"findings"`
+	PRNumber       int             `json:"pr_number,omitempty"`
+	Skills         []SkillMetadata `json:"skills,omitempty"`
+	IdempotencyKey string          `json:"-"` // sent as header, not body
 }
 
 // WireFinding is the flat finding format sent over the wire.

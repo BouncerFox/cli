@@ -24,11 +24,21 @@ var positionalFields = map[string]bool{
 //
 // Component priority:
 //  1. rule_id — always included.
-//  2. evidence["snippet"] — if non-empty.
-//  3. evidence["key"] or evidence["field"] — if present.
-//  4. Sorted remaining evidence key=value pairs, positional fields excluded.
+//  2. evidence["file"] — file path, always included (prevents cross-file collision).
+//  3. evidence["snippet"] — if non-empty.
+//  4. evidence["key"] or evidence["field"] — if present.
+//  5. Sorted remaining evidence key=value pairs, positional fields excluded.
 func ComputeFingerprint(finding document.ScanFinding) string {
-	components := []string{finding.RuleID}
+	filePath := ""
+	if finding.Evidence != nil {
+		if v, ok := finding.Evidence["file"]; ok {
+			if s, _ := v.(string); s != "" {
+				filePath = s
+			}
+		}
+	}
+
+	components := []string{finding.RuleID, filePath}
 	components = append(components, stableEvidence(finding.Evidence))
 	raw := strings.Join(components, "|")
 	sum := sha256.Sum256([]byte(raw))

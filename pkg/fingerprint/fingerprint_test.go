@@ -29,7 +29,7 @@ func TestComputeFingerprint_SnippetTakesPriority(t *testing.T) {
 		},
 	}
 	got := fingerprint.ComputeFingerprint(finding)
-	want := sha256hex("SEC_001", "AKIAIOSFODNN7EXAMPLE")
+	want := sha256hex("SEC_001", "CLAUDE.md", "AKIAIOSFODNN7EXAMPLE")
 	if got != want {
 		t.Errorf("snippet priority: got %s, want %s", got, want)
 	}
@@ -46,7 +46,7 @@ func TestComputeFingerprint_KeyFallback(t *testing.T) {
 		},
 	}
 	got := fingerprint.ComputeFingerprint(finding)
-	want := sha256hex("CFG_001", "allowed_tools")
+	want := sha256hex("CFG_001", "settings.json", "allowed_tools")
 	if got != want {
 		t.Errorf("key fallback: got %s, want %s", got, want)
 	}
@@ -62,7 +62,7 @@ func TestComputeFingerprint_FieldFallback(t *testing.T) {
 		},
 	}
 	got := fingerprint.ComputeFingerprint(finding)
-	want := sha256hex("QA_002", "description")
+	want := sha256hex("QA_002", "", "description")
 	if got != want {
 		t.Errorf("field fallback: got %s, want %s", got, want)
 	}
@@ -81,9 +81,10 @@ func TestComputeFingerprint_SortedFallback(t *testing.T) {
 		},
 	}
 	got := fingerprint.ComputeFingerprint(finding)
-	// Positional fields "line", "line_number", "file" excluded.
-	// Remaining: category=prompt_injection, match=ignore previous instructions
-	want := sha256hex("PS_001", "category=prompt_injection|match=ignore previous instructions")
+	// Positional fields "line", "line_number", "file" excluded from stableEvidence.
+	// file path "SKILL.md" is included as the second component.
+	// Remaining stable evidence: category=prompt_injection, match=ignore previous instructions
+	want := sha256hex("PS_001", "SKILL.md", "category=prompt_injection|match=ignore previous instructions")
 	if got != want {
 		t.Errorf("sorted fallback: got %s, want %s", got, want)
 	}
@@ -96,8 +97,8 @@ func TestComputeFingerprint_EmptyEvidence(t *testing.T) {
 		Evidence: nil,
 	}
 	got := fingerprint.ComputeFingerprint(finding)
-	// empty sorted fallback → empty string component
-	want := sha256hex("QA_001", "")
+	// nil evidence → empty file path and empty stable evidence
+	want := sha256hex("QA_001", "", "")
 	if got != want {
 		t.Errorf("empty evidence: got %s, want %s", got, want)
 	}
@@ -216,5 +217,38 @@ func TestComputeFingerprint_Deterministic(t *testing.T) {
 	fp2 := fingerprint.ComputeFingerprint(f)
 	if fp1 != fp2 {
 		t.Error("same input must produce same fingerprint")
+	}
+}
+
+func TestComputeFingerprint_IncludesFilePath(t *testing.T) {
+	f1 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Evidence: map[string]any{"file": "a/SKILL.md", "snippet": "secret123"},
+	}
+	f2 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Evidence: map[string]any{"file": "b/SKILL.md", "snippet": "secret123"},
+	}
+
+	fp1 := fingerprint.ComputeFingerprint(f1)
+	fp2 := fingerprint.ComputeFingerprint(f2)
+
+	if fp1 == fp2 {
+		t.Error("fingerprints should differ when file paths differ")
+	}
+}
+
+func TestComputeFingerprint_SameFileProducesSameFingerprint(t *testing.T) {
+	f1 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Evidence: map[string]any{"file": "SKILL.md", "snippet": "secret123"},
+	}
+	f2 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Evidence: map[string]any{"file": "SKILL.md", "snippet": "secret123"},
+	}
+
+	if fingerprint.ComputeFingerprint(f1) != fingerprint.ComputeFingerprint(f2) {
+		t.Error("fingerprints should match for same file and evidence")
 	}
 }

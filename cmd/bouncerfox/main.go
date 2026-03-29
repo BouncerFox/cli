@@ -429,6 +429,25 @@ func newScanCmd() *cobra.Command {
 
 				verdict, uploadErr := pc.Upload(ctx, uploadReq)
 				if uploadErr != nil {
+					var superErr *platform.SupersededError
+					var payErr *platform.PaymentRequiredError
+
+					if errors.As(uploadErr, &superErr) {
+						fmt.Fprintln(os.Stderr, "warning: scan superseded — a newer commit exists for this PR")
+						if len(result.Findings) > 0 {
+							os.Exit(1)
+						}
+						return nil
+					}
+
+					if errors.As(uploadErr, &payErr) {
+						fmt.Fprintln(os.Stderr, "warning: subscription lapsed — falling back to local exit logic")
+						if len(result.Findings) > 0 {
+							os.Exit(1)
+						}
+						return nil
+					}
+
 					fmt.Fprintf(os.Stderr, "error: upload failed: %v\n", uploadErr)
 					behavior := offlineBehavior
 					if behavior == "" {

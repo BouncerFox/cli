@@ -3,6 +3,7 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -162,5 +163,41 @@ func TestValidateHTTPS_StillRejectsRemoteHTTP(t *testing.T) {
 		if err := ValidateHTTPS(u); err == nil {
 			t.Errorf("ValidateHTTPS(%q) should reject remote HTTP", u)
 		}
+	}
+}
+
+func TestHTTPClient_Upload_409Superseded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(409)
+		w.Write([]byte(`{"error":"scan_superseded","message":"newer commit exists"}`))
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(srv.URL, "bf_test")
+	_, err := c.Upload(context.Background(), UploadRequest{})
+	if err == nil {
+		t.Fatal("expected error for 409")
+	}
+	var superErr *SupersededError
+	if !errors.As(err, &superErr) {
+		t.Errorf("expected SupersededError, got %T: %v", err, err)
+	}
+}
+
+func TestHTTPClient_Upload_402PaymentRequired(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(402)
+		w.Write([]byte(`{"error":"payment_required"}`))
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(srv.URL, "bf_test")
+	_, err := c.Upload(context.Background(), UploadRequest{})
+	if err == nil {
+		t.Fatal("expected error for 402")
+	}
+	var payErr *PaymentRequiredError
+	if !errors.As(err, &payErr) {
+		t.Errorf("expected PaymentRequiredError, got %T: %v", err, err)
 	}
 }

@@ -12,6 +12,22 @@ import (
 	"time"
 )
 
+// SupersededError is returned when the platform indicates a newer commit exists.
+type SupersededError struct {
+	Message string
+}
+
+func (e *SupersededError) Error() string {
+	return "scan superseded: " + e.Message
+}
+
+// PaymentRequiredError is returned when the org's subscription has lapsed.
+type PaymentRequiredError struct{}
+
+func (e *PaymentRequiredError) Error() string {
+	return "subscription lapsed"
+}
+
 // Client abstracts platform API calls for testability.
 type Client interface {
 	Upload(ctx context.Context, req UploadRequest) (*VerdictResponse, error)
@@ -140,6 +156,12 @@ func (c *HTTPClient) Upload(ctx context.Context, req UploadRequest) (*VerdictRes
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if resp.StatusCode == 409 {
+		return nil, &SupersededError{Message: string(body)}
+	}
+	if resp.StatusCode == 402 {
+		return nil, &PaymentRequiredError{}
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, fmt.Errorf("upload: server returned %d: %s", resp.StatusCode, string(body))
 	}

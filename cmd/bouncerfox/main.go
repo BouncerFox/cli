@@ -333,7 +333,7 @@ func newScanCmd() *cobra.Command {
 			}
 
 			// GitHub PR feedback.
-			if githubComment {
+			if githubComment && !connected {
 				token := os.Getenv("GITHUB_TOKEN")
 				if token == "" {
 					fmt.Fprintln(os.Stderr, "warning: --github-comment requires GITHUB_TOKEN env var")
@@ -403,6 +403,15 @@ func newScanCmd() *cobra.Command {
 					uploadReq.TargetLabel = tgt.Label
 					uploadReq.CommitSHA = tgt.Commit
 					uploadReq.Branch = tgt.Branch
+				}
+
+				// In connected mode, detect PR number and extract skills.
+				if connected {
+					pr, _ := gh.DetectPRNumber(prNumber)
+					if pr > 0 {
+						uploadReq.PRNumber = pr
+					}
+					uploadReq.Skills = upload.ExtractSkillMetadata(docs)
 				}
 
 				if dryRunUpload {

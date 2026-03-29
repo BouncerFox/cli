@@ -71,9 +71,14 @@ func ExtractSkillMetadata(docs []*document.ConfigDocument) []platform.SkillMetad
 		if doc.FileType != document.FileTypeSkillMD {
 			continue
 		}
-		fm := doc.Parsed
-		if fm == nil {
+		if doc.Parsed == nil {
 			continue
+		}
+		// The parser stores YAML frontmatter under the "frontmatter" key.
+		// Fall back to doc.Parsed directly for callers that populate it flat (e.g. unit tests).
+		fm := doc.Parsed
+		if nested, ok := doc.Parsed["frontmatter"].(map[string]any); ok {
+			fm = nested
 		}
 		skills = append(skills, platform.SkillMetadata{
 			File:        doc.FilePath,

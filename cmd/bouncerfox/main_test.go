@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -358,5 +359,129 @@ func TestScan_ImportRef_DetectsFindings(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "SEC_021") {
 		t.Error("should detect SEC_021 for dangerous imports")
+	}
+}
+
+// --- Task 2: connected mode GitHub posting / upload enrichment tests ---
+
+// mockPlatformCapture returns a test server that records upload request bodies.
+func mockPlatformCapture(t *testing.T, captured *[]byte) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/config/pull":
+			w.Header().Set("ETag", `"test"`)
+			w.WriteHeader(200)
+			w.Write([]byte("profile: recommended\n"))
+		case "/api/v1/scans/upload":
+			body, _ := io.ReadAll(r.Body)
+			if captured != nil {
+				*captured = append(*captured, body...)
+			}
+			w.WriteHeader(201)
+			fmt.Fprint(w, `{"scan_id":"test-id","verdict":"pass","reasons":[],"dashboard_url":""}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
+// TestConnected_SkipsGitHubComment verifies that --github-comment is a no-op in
+// connected mode (the platform handles GitHub feedback via its App).
+// We confirm this by running with an invalid GITHUB_TOKEN and a mock platform;
+// if the CLI tried to use the token it would fail, but instead it should exit 0.
+func TestConnected_SkipsGitHubComment(t *testing.T) {
+	srv := mockPlatform(t, "pass")
+	defer srv.Close()
+	_, stderr, code := runBinary(t,
+		[]string{"scan", "testdata/clean-skill", "--github-comment"},
+		"BOUNCERFOX_API_KEY=bf_testkey",
+		"BOUNCERFOX_PLATFORM_URL="+srv.URL,
+		// Provide an obviously invalid token; if the CLI tried to use it, the
+		// GitHub API call would fail and a warning would appear in stderr.
+		"GITHUB_TOKEN=invalid-token-should-not-be-used",
+	)
+	if code != 0 {
+		t.Errorf("connected mode with --github-comment: expected exit 0, got %d", code)
+	}
+	// No GitHub API warning should appear in stderr.
+	if strings.Contains(stderr, "PR comment failed") || strings.Contains(stderr, "check run failed") {
+		t.Error("connected mode should not attempt GitHub API calls: " + stderr)
+	}
+}
+
+// TestConnected_PRNumberInUpload verifies that when GITHUB_EVENT_PATH is set to
+// a PR event payload, the upload request includes pr_number.
+func TestConnected_PRNumberInUpload(t *testing.T) {
+	// Write a GitHub Actions PR event JSON file.
+	eventFile := filepath.Join(t.TempDir(), "event.json")
+	eventJSON := `{"pull_request":{"number":42}}`
+	if err := os.WriteFile(eventFile, []byte(eventJSON), 0o600); err != nil {
+		t.Fatalf("writing event file: %v", err)
+	}
+
+	var captured []byte
+	srv := mockPlatformCapture(t, &captured)
+	defer srv.Close()
+
+	_, _, code := runBinary(t,
+		[]string{"scan", "testdata/clean-skill"},
+		"BOUNCERFOX_API_KEY=bf_testkey",
+		"BOUNCERFOX_PLATFORM_URL="+srv.URL,
+		"GITHUB_EVENT_PATH="+eventFile,
+	)
+	if code != 0 {
+		t.Errorf("expected exit 0, got %d", code)
+	}
+	if len(captured) == 0 {
+		t.Fatal("no upload body captured")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("upload body is not valid JSON: %v\nbody: %s", err, string(captured))
+	}
+	prNum, ok := payload["pr_number"]
+	if !ok {
+		t.Error("upload payload missing pr_number field")
+	} else if int(prNum.(float64)) != 42 {
+		t.Errorf("expected pr_number=42, got %v", prNum)
+	}
+}
+
+// TestConnected_SkillsInUpload verifies that skill metadata from SKILL.md files
+// is included in the upload payload.
+func TestConnected_SkillsInUpload(t *testing.T) {
+	var captured []byte
+	srv := mockPlatformCapture(t, &captured)
+	defer srv.Close()
+
+	_, _, code := runBinary(t,
+		[]string{"scan", "testdata/clean-skill"},
+		"BOUNCERFOX_API_KEY=bf_testkey",
+		"BOUNCERFOX_PLATFORM_URL="+srv.URL,
+	)
+	if code != 0 {
+		t.Errorf("expected exit 0, got %d", code)
+	}
+	if len(captured) == 0 {
+		t.Fatal("no upload body captured")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(captured, &payload); err != nil {
+		t.Fatalf("upload body is not valid JSON: %v\nbody: %s", err, string(captured))
+	}
+	skillsRaw, ok := payload["skills"]
+	if !ok {
+		t.Error("upload payload missing skills field")
+		return
+	}
+	skills, ok := skillsRaw.([]any)
+	if !ok || len(skills) == 0 {
+		t.Error("expected at least one skill in upload payload")
+		return
+	}
+	skill := skills[0].(map[string]any)
+	if skill["name"] != "clean-skill" {
+		t.Errorf("expected skill name 'clean-skill', got %v", skill["name"])
 	}
 }

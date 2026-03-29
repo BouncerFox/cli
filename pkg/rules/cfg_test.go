@@ -363,6 +363,42 @@ func TestCFG009_DashAFlag(t *testing.T) {
 	}
 }
 
+// ── CFG_007 ─────────────────────────────────────────────────────────────────
+
+func TestCFG007_HookDefined(t *testing.T) {
+	content := `{
+		"hooks": {
+			"PreToolUse": [{"type": "command", "command": "echo test"}]
+		}
+	}`
+	doc := newSettingsDoc(content)
+	findings := CheckCFG007(doc, defaultRC())
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	if findings[0].Severity != document.SeverityInfo {
+		t.Errorf("severity = %s, want info", findings[0].Severity)
+	}
+}
+
+func TestCFG007_NoHooks(t *testing.T) {
+	content := `{"permissions": {"allowedTools": ["Read"]}}`
+	doc := newSettingsDoc(content)
+	findings := CheckCFG007(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0", len(findings))
+	}
+}
+
+func TestCFG007_WrongFileType(t *testing.T) {
+	content := `{"hooks": {"PreToolUse": [{"type": "command", "command": "echo"}]}}`
+	doc := newMCPDoc(content) // MCP, not settings
+	findings := CheckCFG007(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (wrong file type)", len(findings))
+	}
+}
+
 // ── CFG_004 (hooks_json / lsp_json) ──────────────────────────────────────────
 
 func TestCFG004_HooksJSON(t *testing.T) {

@@ -202,6 +202,38 @@ func CheckCFG006(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 	return nil
 }
 
+// CheckCFG007 flags when hooks are defined in settings — informational, all hooks require review.
+func CheckCFG007(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
+	if hasParseError(doc) {
+		return nil
+	}
+	if doc.FileType != document.FileTypeSettingsJSON {
+		return nil
+	}
+
+	cmds := ExtractHookCommands(doc.Parsed)
+	if len(cmds) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(cmds))
+	for _, c := range cmds {
+		names = append(names, c.Name)
+	}
+
+	return []document.ScanFinding{{
+		RuleID:   "CFG_007",
+		Severity: document.SeverityInfo,
+		Message:  fmt.Sprintf("%d hook(s) defined — all hooks require reviewer acknowledgment", len(cmds)),
+		Evidence: map[string]any{
+			"file":    doc.FilePath,
+			"line":    parser.FindJSONKeyLine(doc.Content, "hooks"),
+			"snippet": strings.Join(names, ", "),
+		},
+		Remediation: "Ensure all hooks are reviewed and acknowledged.",
+	}}
+}
+
 // CheckCFG009 checks for permissive flags in MCP server args and hook commands.
 func CheckCFG009(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if hasParseError(doc) {

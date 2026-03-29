@@ -367,6 +367,16 @@ var Registry = []document.RuleMetadata{
 		Check:            CheckCFG006,
 	},
 	{
+		ID:               "CFG_007",
+		Name:             "Hook Defined",
+		Category:         "config",
+		Description:      "Hooks are defined — all hooks require reviewer acknowledgment",
+		Remediation:      "Ensure all hooks are reviewed and acknowledged.",
+		DefaultSeverity:  document.SeverityInfo,
+		DefaultFileTypes: []string{document.FileTypeSettingsJSON},
+		Check:            CheckCFG007,
+	},
+	{
 		ID:               "CFG_009",
 		Name:             "Broad MCP Permission Flag",
 		Category:         "config",

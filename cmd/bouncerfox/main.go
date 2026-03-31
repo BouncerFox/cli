@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/bouncerfox/cli/pkg/auth"
 	"github.com/bouncerfox/cli/pkg/config"
@@ -36,7 +37,12 @@ const (
 	maxFileSize  = 1 * 1024 * 1024 // 1 MB
 	maxFileCount = 500
 	scanTimeout  = 5 * time.Minute
+
 )
+
+// platformEnabled gates connected mode (config pull, upload, verdicts).
+// Set to true when the BouncerFox platform is live.
+var platformEnabled = false
 
 // errStopWalk is a sentinel returned from the Walk callback to stop iteration
 // when the file count limit is reached.
@@ -110,8 +116,12 @@ func newScanCmd() *cobra.Command {
 
 			// Connected mode detection.
 			apiKey := auth.ResolveAPIKey()
-			connected := apiKey != ""
+			connected := platformEnabled && apiKey != ""
 			platformURL := auth.PlatformURL()
+
+			if !platformEnabled && apiKey != "" {
+				fmt.Fprintln(os.Stderr, "note: connected mode is coming soon — running in offline mode")
+			}
 
 			// Validate HTTPS for connected mode.
 			if connected {
@@ -653,7 +663,15 @@ func newAuthCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "auth",
 		Short: "Authenticate with the BouncerFox platform",
+		// TODO: implement device code flow when platform launches
+		// (browser-side code exchange, CLI polls for token — no key pasting needed)
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if !platformEnabled {
+				fmt.Fprintln(os.Stderr, "The BouncerFox platform is coming soon.")
+				fmt.Fprintln(os.Stderr, "For now, set BOUNCERFOX_API_KEY as an environment variable when the platform is available.")
+				return nil
+			}
+
 			platformURL := auth.PlatformURL()
 			webURL := strings.Replace(platformURL, "api.", "app.", 1) + "/auth/cli"
 
@@ -661,10 +679,13 @@ func newAuthCmd() *cobra.Command {
 			_ = openBrowser(webURL)
 
 			fmt.Fprint(os.Stderr, "Paste your API key: ")
-			var key string
-			_, _ = fmt.Scanln(&key)
+			keyBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+			fmt.Fprintln(os.Stderr) // newline after hidden input
+			if err != nil {
+				return fmt.Errorf("reading API key: %w", err)
+			}
 
-			key = strings.TrimSpace(key)
+			key := strings.TrimSpace(string(keyBytes))
 			if key == "" {
 				return fmt.Errorf("no API key provided")
 			}

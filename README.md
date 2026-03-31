@@ -94,13 +94,13 @@ map to exit code 0. `warn` maps to 0. `fail` maps to 1.
 
 ## Rules
 
-34 built-in rules across four categories:
+35 built-in rules across four categories:
 
 | Category | Prefix | Count | Focus |
 |---|---|---|---|
 | Security | `SEC_` | 16 | Hardcoded secrets, dangerous commands, supply chain, exfiltration |
 | Quality | `QA_` | 10 | Missing fields, thin descriptions, oversized files, binary detection |
-| Config | `CFG_` | 7 | Overly broad permissions, hook injection, MCP misconfig |
+| Config | `CFG_` | 8 | Overly broad permissions, hook injection, hook review, MCP misconfig |
 | Prompt Safety | `PS_` | 1 | Hidden HTML comments with embedded instructions |
 
 Example rule IDs: `SEC_001` (hardcoded secret), `SEC_018` (high-entropy string),
@@ -187,7 +187,7 @@ rules:
   SEC_018:
     enabled: true
     params:
-      min_entropy: 4.5        # entropy threshold for SEC_018
+      base64_threshold_freetext: 4.5  # per-charset entropy thresholds
   QA_001:
     enabled: false            # disable a rule entirely
 ```
@@ -353,8 +353,9 @@ Generate a shell completion script for the specified shell.
 
 ### `bouncerfox auth`
 
-Authenticate with the BouncerFox platform. Opens a browser to obtain an API key and
-saves it to `~/.config/bouncerfox/credentials`.
+Authenticate with the BouncerFox platform. Opens a browser to the platform
+dashboard, then prompts you to paste your API key. Saves the key to
+`~/.config/bouncerfox/credentials`.
 
 ### `bouncerfox config refresh`
 

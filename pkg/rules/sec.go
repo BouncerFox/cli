@@ -33,6 +33,18 @@ var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)(password|passwd|secret|api[_-]?key)\s*[:=]\s*['"]?\S{8,}`),
 }
 
+var envVarRefRe = regexp.MustCompile(`(?i)ENV\[|os\.environ\[|os\.getenv\(|process\.env\.|` +
+	`\$env:|` +
+	`\$\{[A-Z_]+\}`)
+
+// catchAllPatternIndices identifies the indices within secretPatterns that are
+// broad catch-all patterns. Matches from these patterns are suppressed when the
+// line contains an environment-variable reference (e.g. os.getenv, ENV[], etc.).
+var catchAllPatternIndices = map[int]bool{
+	5:  true, // (?i)(api[_-]?key|secret|token|password|auth)\s*[:=]\s*['"]?[0-9a-f]{32,}
+	13: true, // (?i)(password|passwd|secret|api[_-]?key)\s*[:=]\s*['"]?\S{8,}
+}
+
 var zeroWidthRe = regexp.MustCompile(
 	"[\u034f\u061c\u115f\u1160\u17b4\u17b5\u180e" +
 		"\u200b\u200c\u200d\u200e\u200f" +
@@ -225,8 +237,11 @@ func CheckSEC001(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 		if len(line) > maxLineLength {
 			line = line[:maxLineLength]
 		}
-		for _, pat := range secretPatterns {
+		for idx, pat := range secretPatterns {
 			if pat.MatchString(line) {
+				if catchAllPatternIndices[idx] && envVarRefRe.MatchString(line) {
+					continue
+				}
 				sec001Lines[lineNum] = true
 				findings = append(findings, document.ScanFinding{
 					RuleID:   "SEC_001",

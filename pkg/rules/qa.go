@@ -11,7 +11,7 @@ import (
 )
 
 var skillNameFromPathRe = regexp.MustCompile(`\.claude/skills/([^/]+)/SKILL\.md$`)
-var validSkillNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
+var validSkillNameRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9:-]*[a-z0-9])?$`)
 
 // CheckQA001 checks that required frontmatter fields (name, description) exist.
 func CheckQA001(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
@@ -263,7 +263,7 @@ func CheckQA007(doc *document.ConfigDocument, rc *document.RuleContext) []docume
 			"line":    GetFrontmatterLine(doc, "name"),
 			"snippet": "name: " + name,
 		},
-		Remediation: "Use only lowercase letters, numbers, and hyphens. Name must start with a letter or digit.",
+		Remediation: "Use only lowercase letters, numbers, hyphens, and colons. Name must start and end with a letter or digit.",
 	}}
 }
 

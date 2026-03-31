@@ -4,7 +4,7 @@ package rules
 func DefaultRuleParams() map[string]map[string]any {
 	return map[string]map[string]any{
 		"QA_003": {"min_description_length": 20},
-		"PS_004": {"min_comment_length": 25},
+		"PS_004": {"min_comment_length": 80},
 		"QA_008": {"max_file_size_kb": 50.0},
 		"SEC_002": {
 			"url_allowlist": []string{

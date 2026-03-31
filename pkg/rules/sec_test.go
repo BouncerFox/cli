@@ -127,6 +127,72 @@ func TestSEC001_NoFinding(t *testing.T) {
 	}
 }
 
+func TestSEC001_EnvVarENV(t *testing.T) {
+	doc := newClaudeMDDoc("api_key: ENV['OPENAI_API_KEY']")
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (env var reference should be excluded)", len(findings))
+	}
+}
+
+func TestSEC001_EnvVarOsEnviron(t *testing.T) {
+	doc := newClaudeMDDoc(`api_key=os.environ["GEMINI_API_KEY"]`)
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (os.environ reference should be excluded)", len(findings))
+	}
+}
+
+func TestSEC001_EnvVarProcessEnv(t *testing.T) {
+	doc := newClaudeMDDoc("password: process.env.DB_PASSWORD")
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (process.env reference should be excluded)", len(findings))
+	}
+}
+
+func TestSEC001_EnvVarShellSyntax(t *testing.T) {
+	doc := newClaudeMDDoc("secret=${MY_SECRET}")
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (shell env var syntax should be excluded)", len(findings))
+	}
+}
+
+func TestSEC001_EnvVarOsGetenv(t *testing.T) {
+	doc := newClaudeMDDoc(`api_key: os.getenv("API_KEY")`)
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (os.getenv reference should be excluded)", len(findings))
+	}
+}
+
+func TestSEC001_EnvVarPowershell(t *testing.T) {
+	doc := newClaudeMDDoc("api_key: $env:API_KEY_VALUE")
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (PowerShell env var reference should be excluded)", len(findings))
+	}
+}
+
+func TestSEC001_RealSecretStillFlagged(t *testing.T) {
+	doc := newClaudeMDDoc("password: actualplaintextpassword123")
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1 (real secret should still be flagged)", len(findings))
+	}
+}
+
+func TestSEC001_SpecificPatternWithEnvVar(t *testing.T) {
+	// A specific pattern (Anthropic key) should still match even with an env var on the same line
+	key := "sk-ant-api03-" + strings.Repeat("A", 90)
+	doc := newClaudeMDDoc(key + " ENV['FOO']")
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1 (specific pattern should not be suppressed by env var)", len(findings))
+	}
+}
+
 // ── SEC_002 ──────────────────────────────────────────────────────────────────
 
 func TestSEC002_ExternalURL(t *testing.T) {

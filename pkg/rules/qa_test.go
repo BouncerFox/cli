@@ -322,6 +322,62 @@ func TestQA007_NoName(t *testing.T) {
 	}
 }
 
+func TestQA007_ColonNamespace(t *testing.T) {
+	doc := newSkillDoc("---\nname: ce:brainstorm\ndescription: desc\n---\n")
+	findings := CheckQA007(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (colon namespace should be valid)", len(findings))
+	}
+}
+
+func TestQA007_ColonWork(t *testing.T) {
+	doc := newSkillDoc("---\nname: ce:work\ndescription: desc\n---\n")
+	findings := CheckQA007(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (colon namespace should be valid)", len(findings))
+	}
+}
+
+func TestQA007_MultipleColons(t *testing.T) {
+	doc := newSkillDoc("---\nname: a:b:c\ndescription: desc\n---\n")
+	findings := CheckQA007(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (multiple colons should be valid)", len(findings))
+	}
+}
+
+func TestQA007_StartsWithColon(t *testing.T) {
+	doc := newSkillDoc("---\nname: :bad\ndescription: desc\n---\n")
+	findings := CheckQA007(doc, defaultRC())
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1 (starts with colon is invalid)", len(findings))
+	}
+}
+
+func TestQA007_EndsWithColon(t *testing.T) {
+	doc := newSkillDoc("---\nname: \"bad:\"\ndescription: desc\n---\n")
+	findings := CheckQA007(doc, defaultRC())
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1 (ends with colon is invalid)", len(findings))
+	}
+}
+
+func TestQA007_SingleChar(t *testing.T) {
+	doc := newSkillDoc("---\nname: a\ndescription: desc\n---\n")
+	findings := CheckQA007(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (single char name should be valid)", len(findings))
+	}
+}
+
+func TestQA007_TwoChar(t *testing.T) {
+	doc := newSkillDoc("---\nname: a1\ndescription: desc\n---\n")
+	findings := CheckQA007(doc, defaultRC())
+	if len(findings) != 0 {
+		t.Errorf("got %d findings, want 0 (two char name should be valid)", len(findings))
+	}
+}
+
 // ── QA_008 ──────────────────────────────────────────────────────────────────
 
 func TestQA008_TooLarge(t *testing.T) {

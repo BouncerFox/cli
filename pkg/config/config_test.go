@@ -665,7 +665,7 @@ func TestLoadConfig_WithGlobalConfig(t *testing.T) {
 	globalDir := t.TempDir()
 	t.Setenv("BOUNCERFOX_CONFIG_DIR", globalDir)
 
-	if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("ignore:\n  - \"plugins/marketplaces/**\"\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("ignore:\n  - \"plugins/marketplaces/**\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -690,7 +690,7 @@ func TestLoadConfig_MalformedGlobal_WarnsAndContinues(t *testing.T) {
 	globalDir := t.TempDir()
 	t.Setenv("BOUNCERFOX_CONFIG_DIR", globalDir)
 
-	if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("invalid: [yaml: broken"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("invalid: [yaml: broken"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

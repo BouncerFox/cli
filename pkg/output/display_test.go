@@ -43,7 +43,7 @@ func TestSanitizeForDisplay_Truncate(t *testing.T) {
 func TestSanitizeForDisplay_InvalidUTF8(t *testing.T) {
 	input := "hello\xff\xfeworld"
 	got := sanitizeForDisplay(input)
-	if len(got) == 0 {
+	if got == "" {
 		t.Error("should produce non-empty output")
 	}
 	// Should contain replacement characters

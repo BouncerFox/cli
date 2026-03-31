@@ -13,7 +13,7 @@ import (
 func TestWriteCodeFrame_ShowsContext(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.md")
-	os.WriteFile(file, []byte("line1\nline2\nline3\nline4\nline5\nline6\nline7\n"), 0644)
+	os.WriteFile(file, []byte("line1\nline2\nline3\nline4\nline5\nline6\nline7\n"), 0o644)
 
 	f := document.ScanFinding{
 		RuleID:   "SEC_002",
@@ -41,7 +41,7 @@ func TestWriteCodeFrame_ShowsContext(t *testing.T) {
 func TestWriteCodeFrame_MasksSecrets(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.md")
-	os.WriteFile(file, []byte("line1\nline2\napi_key = sk-secret-value-here\nline4\nline5\n"), 0644)
+	os.WriteFile(file, []byte("line1\nline2\napi_key = sk-secret-value-here\nline4\nline5\n"), 0o644)
 
 	f := document.ScanFinding{
 		RuleID:   "SEC_001",
@@ -77,7 +77,7 @@ func TestWriteCodeFrame_MissingFile(t *testing.T) {
 func TestWriteCodeFrame_LineOutOfRange(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.md")
-	os.WriteFile(file, []byte("one line\n"), 0644)
+	os.WriteFile(file, []byte("one line\n"), 0o644)
 
 	f := document.ScanFinding{
 		RuleID:   "SEC_002",
@@ -95,7 +95,7 @@ func TestWriteCodeFrame_LineOutOfRange(t *testing.T) {
 func TestWriteCodeFrame_UnicodeBoxDrawing(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.md")
-	os.WriteFile(file, []byte("line1\nline2\nline3\n"), 0644)
+	os.WriteFile(file, []byte("line1\nline2\nline3\n"), 0o644)
 
 	f := document.ScanFinding{
 		RuleID:   "SEC_002",
@@ -114,7 +114,7 @@ func TestWriteCodeFrame_UnicodeBoxDrawing(t *testing.T) {
 func TestWriteCodeFrame_ASCIIBoxDrawing(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.md")
-	os.WriteFile(file, []byte("line1\nline2\nline3\n"), 0644)
+	os.WriteFile(file, []byte("line1\nline2\nline3\n"), 0o644)
 
 	f := document.ScanFinding{
 		RuleID:   "SEC_002",
@@ -133,7 +133,7 @@ func TestWriteCodeFrame_ASCIIBoxDrawing(t *testing.T) {
 func TestWriteCodeFrame_SEC018Masked(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.md")
-	os.WriteFile(file, []byte("line1\nhigh_entropy_string_abcdef123456\nline3\n"), 0644)
+	os.WriteFile(file, []byte("line1\nhigh_entropy_string_abcdef123456\nline3\n"), 0o644)
 
 	f := document.ScanFinding{
 		RuleID:   "SEC_018",

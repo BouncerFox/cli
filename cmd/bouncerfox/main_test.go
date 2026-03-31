@@ -21,7 +21,6 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	defer os.RemoveAll(tmp)
 
 	binaryPath = filepath.Join(tmp, "bouncerfox")
 	build := exec.Command("go", "build", "-o", binaryPath, "./")
@@ -30,7 +29,9 @@ func TestMain(m *testing.M) {
 		panic("build failed: " + string(out))
 	}
 
-	os.Exit(m.Run())
+	code := m.Run()
+	os.RemoveAll(tmp)
+	os.Exit(code)
 }
 
 func runBinary(t *testing.T, args []string, env ...string) (stdout, stderr string, exitCode int) {

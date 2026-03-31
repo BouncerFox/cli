@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.25'
 
       - name: Run tests
         run: go test ./... -race
@@ -26,7 +26,6 @@ jobs:
 
       - name: Run govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-        continue-on-error: true  # Go 1.24 stdlib has known vulns (GO-2026-4601, GO-2026-4602) fixed in 1.25+
 
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6

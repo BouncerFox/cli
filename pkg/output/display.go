@@ -49,7 +49,7 @@ type renderMode struct {
 }
 
 // resolveRenderMode determines rendering based on flags and TTY status.
-func resolveRenderMode(noColor bool, isTTY bool) renderMode {
+func resolveRenderMode(noColor, isTTY bool) renderMode {
 	if noColor || os.Getenv("NO_COLOR") != "" {
 		return renderMode{}
 	}
@@ -104,13 +104,6 @@ func (rm renderMode) bold(s string) string {
 		return s
 	}
 	return ansiBold + s + ansiReset
-}
-
-func (rm renderMode) dim(s string) string {
-	if !rm.colors {
-		return s
-	}
-	return ansiDim + s + ansiReset
 }
 
 func (rm renderMode) color(code, s string) string {

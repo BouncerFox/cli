@@ -162,11 +162,12 @@ func newScanCmd() *cobra.Command {
 					Target: tgt.ID,
 					ETag:   etag,
 				})
-				if pullErr != nil {
+				switch {
+				case pullErr != nil:
 					fmt.Fprintf(os.Stderr, "warning: config pull failed: %v (using local config)\n", pullErr)
-				} else if pullResp.NotModified {
+				case pullResp.NotModified:
 					// Cache is still valid; configHash already set above.
-				} else {
+				default:
 					// Fresh config from platform.
 					if remoteCfg, rv, parseErr := config.ParsePlatformConfig([]byte(pullResp.Body)); parseErr != nil {
 						fmt.Fprintf(os.Stderr, "warning: could not parse platform config: %v (using local config)\n", parseErr)
@@ -661,7 +662,7 @@ func newAuthCmd() *cobra.Command {
 
 			fmt.Fprint(os.Stderr, "Paste your API key: ")
 			var key string
-			fmt.Scanln(&key)
+			_, _ = fmt.Scanln(&key)
 
 			key = strings.TrimSpace(key)
 			if key == "" {

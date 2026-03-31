@@ -1,14 +1,15 @@
 #!/bin/sh
 set -e
 
-ARGS="scan $INPUT_PATH --format $INPUT_FORMAT --severity $INPUT_SEVERITY"
+# Build argument list using positional parameters (safe word splitting).
+set -- scan "${INPUT_PATH:-.}" --format "${INPUT_FORMAT:-table}" --severity "${INPUT_SEVERITY:-info}"
 
 if [ -n "$INPUT_CONFIG" ]; then
-  ARGS="$ARGS --config $INPUT_CONFIG"
+  set -- "$@" --config "$INPUT_CONFIG"
 fi
 
 if [ "$INPUT_GITHUB_COMMENT" = "true" ]; then
-  ARGS="$ARGS --github-comment"
+  set -- "$@" --github-comment
 fi
 
-exec bf $ARGS
+exec bf "$@"

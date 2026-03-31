@@ -1,7 +1,7 @@
 # BouncerFox CLI
 
 Scan AI agent config files for security, quality, and compliance issues.
-Code never leaves your machine — the scanner runs entirely offline.
+Code never leaves your machine. The scanner runs entirely offline.
 
 ## What It Scans
 
@@ -90,7 +90,7 @@ bouncerfox init
 In connected mode, the platform returns one of four verdicts: `pass` (no findings),
 `warn` (findings below enforcement threshold), `fail` (findings match enforcement rules),
 or `informational` (org has no enforcement configured). Both `pass` and `informational`
-map to exit code 0; `warn` maps to 0; `fail` maps to 1.
+map to exit code 0. `warn` maps to 0. `fail` maps to 1.
 
 ## Rules
 
@@ -126,12 +126,12 @@ When both global and project configs exist, they are merged:
 
 - **Scalars** (`profile`, `severity_floor`): project wins if set, otherwise global
 - **Lists** (`ignore`): combined from both (additive, deduplicated)
-- **Rules**: deep-merged per rule ID — project overrides specific fields, unset fields inherit from global
-- **Rule params**: replaced wholesale — project params for a rule replace global params entirely
+- **Rules**: deep-merged per rule ID. Project overrides specific fields, unset fields inherit from global.
+- **Rule params**: replaced wholesale. Project params for a rule replace global params entirely.
 - **CLI flags**: always override both config files
 - **Platform config** (connected mode): overrides all local config
 
-Example — global config sets org-wide defaults:
+Example. Global config sets org-wide defaults:
 
 ```yaml
 # ~/.config/bouncerfox/config.yml
@@ -292,7 +292,7 @@ Custom rules created in the platform dashboard are automatically compiled and ex
 alongside built-in rules during the scan. If the platform's built-in rules version
 differs from the CLI's, a warning is printed to stderr.
 
-In connected mode, the CLI **does not** post Check Runs or PR comments — the
+In connected mode, the CLI **does not** post Check Runs or PR comments. The
 platform handles all GitHub feedback via its GitHub App. The `--github-comment`
 flag is ignored. No `GITHUB_TOKEN` is needed.
 
@@ -365,7 +365,7 @@ to pull fresh config on the next scan.
 
 | Variable | Description |
 |---|---|
-| `BOUNCERFOX_API_KEY` | Platform API key — enables connected mode (config pull + upload + verdict) |
+| `BOUNCERFOX_API_KEY` | Platform API key. Enables connected mode (config pull + upload + verdict). |
 | `BOUNCERFOX_PLATFORM_URL` | Platform API base URL (default: `https://api.bouncerfox.dev`) |
 | `BOUNCERFOX_CONFIG_DIR` | Config directory override (default: `~/.config/bouncerfox`) |
 | `BOUNCERFOX_TARGET` | Override scan target identity |
@@ -389,7 +389,7 @@ or `bouncerfox auth`). In connected mode the CLI:
 4. Uploads findings to the platform (including PR number and skill metadata)
 5. Uses the platform's verdict for the exit code (`pass`, `warn`, `fail`, or `informational`)
 
-In connected mode, the platform owns the GitHub Check Run lifecycle — the CLI does not
+In connected mode, the platform owns the GitHub Check Run lifecycle. The CLI does not
 post Check Runs or PR comments. This allows the platform to update Check Runs when
 findings are acknowledged.
 
@@ -400,7 +400,7 @@ findings are acknowledged.
 # Authenticate (saves API key locally)
 bouncerfox auth
 
-# Scan — connected mode activates automatically
+# Scan. Connected mode activates automatically.
 bouncerfox scan .
 
 # Preview what would be uploaded
@@ -428,21 +428,21 @@ bouncerfox scan .
 
 ## Security
 
-- **Offline by default** — no network calls unless `BOUNCERFOX_API_KEY` is set or `--github-comment` is used
-- Max file size: 1 MB; max file count: 500; scan timeout: 5 minutes
+- **Offline by default.** No network calls unless `BOUNCERFOX_API_KEY` is set or `--github-comment` is used.
+- Max file size: 1 MB. Max file count: 500. Scan timeout: 5 minutes.
 - Symlinks pointing outside the scan root are rejected
-- Custom rule regex uses RE2 — no ReDoS risk
-- Signed binaries with SLSA provenance attestation; verify with `gh attestation verify`
+- Custom rule regex uses RE2. No ReDoS risk.
+- Signed binaries with SLSA provenance attestation. Verify with `gh attestation verify`.
 
 ## Shell Completions
 
 Generate tab-completion scripts for your shell:
 
 ```bash
-# Bash — add to ~/.bashrc
+# Bash: add to ~/.bashrc
 eval "$(bouncerfox completion bash)"
 
-# Zsh — add to ~/.zshrc (or place in $fpath)
+# Zsh: add to ~/.zshrc (or place in $fpath)
 bouncerfox completion zsh > "${fpath[1]}/_bouncerfox"
 
 # Fish
@@ -464,6 +464,6 @@ bash  fish  powershell  zsh
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE).
 
 Copyright 2026 BouncerFox Contributors.

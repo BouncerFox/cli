@@ -28,9 +28,9 @@ jobs:
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: latest
+          version: v2.11.4
 
       - name: Build smoke test
         run: go build -ldflags="-X main.version=ci-$(git rev-parse --short HEAD)" -o bouncerfox ./cmd/bouncerfox

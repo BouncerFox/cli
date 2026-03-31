@@ -37,7 +37,6 @@ const (
 	maxFileSize  = 1 * 1024 * 1024 // 1 MB
 	maxFileCount = 500
 	scanTimeout  = 5 * time.Minute
-
 )
 
 // platformEnabled gates connected mode (config pull, upload, verdicts).
@@ -679,8 +678,8 @@ func newAuthCmd() *cobra.Command {
 			_ = openBrowser(webURL)
 
 			fmt.Fprint(os.Stderr, "Paste your API key: ")
-			keyBytes, err := term.ReadPassword(int(os.Stdin.Fd()))
-			fmt.Fprintln(os.Stderr) // newline after hidden input
+			keyBytes, err := term.ReadPassword(int(os.Stdin.Fd())) //nolint:gosec // G115: Fd() fits in int on all supported platforms
+			fmt.Fprintln(os.Stderr)                                // newline after hidden input
 			if err != nil {
 				return fmt.Errorf("reading API key: %w", err)
 			}

@@ -729,12 +729,12 @@ func sec018Params(rc *document.RuleContext) (thresholds map[string]map[string]fl
 
 	// Warn when thresholds exceed the charset's theoretical maximum entropy.
 	// hex: log2(16)=4.0, base64: log2(64)=6.0, mixed: ~log2(95)=6.57
-	maxEntropy := map[string]float64{"hex": 4.0, "base64": 6.0, "mixed": 6.57}
+	entropyMax := map[string]float64{"hex": 4.0, "base64": 6.0, "mixed": 6.57}
 	for ctx, ctxMap := range thresholds {
 		for charset, threshold := range ctxMap {
-			if max, ok := maxEntropy[charset]; ok && threshold > max {
+			if ceiling, ok := entropyMax[charset]; ok && threshold > ceiling {
 				fmt.Fprintf(os.Stderr, "warning: SEC_018 %s_threshold_%s=%.1f exceeds max %s entropy (%.1f) — detection disabled for this charset\n",
-					charset, ctx, threshold, charset, max)
+					charset, ctx, threshold, charset, ceiling)
 			}
 		}
 	}

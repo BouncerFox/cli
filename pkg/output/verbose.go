@@ -59,7 +59,7 @@ func writeCodeFrame(w io.Writer, rm renderMode, f document.ScanFinding) {
 }
 
 func readFileLines(path string) ([]string, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) //nolint:gosec // G304: reading source file for code frame display
 	if err != nil {
 		return nil, err
 	}

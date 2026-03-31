@@ -58,7 +58,7 @@ func resolveRenderMode(noColor, isTTY bool) renderMode {
 
 // IsTerminalStdout returns true if stdout is an interactive terminal.
 func IsTerminalStdout() bool {
-	return term.IsTerminal(int(os.Stdout.Fd()))
+	return term.IsTerminal(int(os.Stdout.Fd())) //nolint:gosec // G115: terminal width fits in int
 }
 
 const (

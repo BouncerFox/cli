@@ -703,4 +703,3 @@ func TestLoadConfig_MalformedGlobal_WarnsAndContinues(t *testing.T) {
 		t.Errorf("should fall back to defaults, got profile %q", cfg.Profile)
 	}
 }
-

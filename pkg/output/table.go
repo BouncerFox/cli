@@ -212,4 +212,3 @@ func evidenceFileAndLine(ev map[string]any) (file string, line int) {
 	}
 	return file, line
 }
-

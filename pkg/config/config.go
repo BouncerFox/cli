@@ -213,7 +213,7 @@ func LoadProjectConfig(dir string) (*Config, error) {
 // loadGlobalConfig returns nil if the global config file is missing or unparseable.
 func loadGlobalConfig() *Config {
 	path := filepath.Join(configdir.Dir(), "config.yml")
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: config file path from user input
 	if err != nil {
 		return nil
 	}
@@ -337,7 +337,7 @@ func ParseConfigBytes(data []byte) (*Config, error) {
 func readConfigFile(dir string) ([]byte, error) {
 	for _, name := range []string{".bouncerfox.yml", ".bouncerfox.yaml"} {
 		path := filepath.Join(dir, name)
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) //nolint:gosec // G304: config file path from user input
 		if err == nil {
 			return data, nil
 		}
@@ -475,10 +475,10 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 
 // PlatformConfig is the structured config pull response from the platform API.
 type PlatformConfig struct {
-	Enforcement  platformEnforcement  `yaml:"enforcement"`
-	Profile      platformProfile      `yaml:"profile"`
-	CustomRules  []CustomRuleConfig   `yaml:"custom_rules"`
-	RulesVersion string               `yaml:"rules_version"`
+	Enforcement  platformEnforcement `yaml:"enforcement"`
+	Profile      platformProfile     `yaml:"profile"`
+	CustomRules  []CustomRuleConfig  `yaml:"custom_rules"`
+	RulesVersion string              `yaml:"rules_version"`
 }
 
 type platformEnforcement struct {

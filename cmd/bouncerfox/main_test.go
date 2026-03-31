@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -23,7 +24,7 @@ func TestMain(m *testing.M) {
 	}
 
 	binaryPath = filepath.Join(tmp, "bouncerfox")
-	build := exec.Command("go", "build", "-o", binaryPath, "./")
+	build := exec.CommandContext(context.Background(), "go", "build", "-o", binaryPath, "./")
 	build.Dir = "."
 	if out, err := build.CombinedOutput(); err != nil {
 		panic("build failed: " + string(out))

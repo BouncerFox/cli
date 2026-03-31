@@ -111,7 +111,7 @@ func parseGitRemoteSlug(remote string) string {
 }
 
 func gitOutput(dir string, args ...string) string {
-	cmd := exec.Command("git", args...)
+	cmd := exec.Command("git", args...) //nolint:gosec // G204: git command with safe args
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {

@@ -681,7 +681,7 @@ func newAuthCmd() *cobra.Command {
 // openBrowser opens the given URL in the system browser (best-effort).
 func openBrowser(url string) error {
 	for _, cmd := range []string{"xdg-open", "open", "rundll32"} {
-		if err := exec.Command(cmd, url).Start(); err == nil {
+		if err := exec.Command(cmd, url).Start(); err == nil { //nolint:gosec // G204: intentional exec for auth browser open
 			return nil
 		}
 	}

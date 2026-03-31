@@ -138,7 +138,7 @@ func TestComputeFingerprint_ReturnsSHA256Hex(t *testing.T) {
 		t.Errorf("expected 64-char hex digest, got len=%d: %s", len(got), got)
 	}
 	for _, c := range got {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Errorf("non-hex character in fingerprint: %c", c)
 		}
 	}

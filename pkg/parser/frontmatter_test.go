@@ -174,7 +174,7 @@ func TestParseFrontmatterMD_DeepNestedYAML(t *testing.T) {
 	sb.WriteString("---\n")
 	for i := 0; i < 50; i++ {
 		sb.WriteString(strings.Repeat("  ", i))
-		sb.WriteString(fmt.Sprintf("level%d:\n", i))
+		fmt.Fprintf(&sb, "level%d:\n", i)
 	}
 	sb.WriteString(strings.Repeat("  ", 50))
 	sb.WriteString("value: deep\n")

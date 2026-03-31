@@ -97,4 +97,3 @@ func TestSeverityBadge_ASCII(t *testing.T) {
 		t.Errorf("got %q, want %q", badge, "[critical]")
 	}
 }
-

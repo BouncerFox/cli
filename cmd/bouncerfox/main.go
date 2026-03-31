@@ -278,7 +278,7 @@ func newScanCmd() *cobra.Command {
 						return nil
 					}
 
-					content, err := os.ReadFile(path)
+					content, err := os.ReadFile(path) //nolint:gosec // G304: reading user-provided config file
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "warning: could not read %s: %v\n", path, err)
 						return nil
@@ -569,7 +569,7 @@ func binaryChecksum() string {
 	if err != nil {
 		return ""
 	}
-	data, err := os.ReadFile(exe)
+	data, err := os.ReadFile(exe) //nolint:gosec // G304: reading symlink target for validation
 	if err != nil {
 		return ""
 	}
@@ -681,7 +681,7 @@ func newAuthCmd() *cobra.Command {
 // openBrowser opens the given URL in the system browser (best-effort).
 func openBrowser(url string) error {
 	for _, cmd := range []string{"xdg-open", "open", "rundll32"} {
-		if err := exec.Command(cmd, url).Start(); err == nil { //nolint:gosec // G204: intentional exec for auth browser open
+		if err := exec.CommandContext(context.Background(), cmd, url).Start(); err == nil { //nolint:gosec // G204: intentional exec for auth browser open
 			return nil
 		}
 	}

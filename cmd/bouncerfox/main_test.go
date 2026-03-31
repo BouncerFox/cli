@@ -37,7 +37,7 @@ func TestMain(m *testing.M) {
 
 func runBinary(t *testing.T, args []string, env ...string) (stdout, stderr string, exitCode int) {
 	t.Helper()
-	cmd := exec.Command(binaryPath, args...)
+	cmd := exec.CommandContext(context.Background(), binaryPath, args...)
 	cmd.Env = append(os.Environ(), env...)
 	var outBuf, errBuf bytes.Buffer
 	cmd.Stdout = &outBuf
@@ -73,7 +73,7 @@ func TestSmoke_Rules(t *testing.T) {
 
 func TestSmoke_Init(t *testing.T) {
 	dir := t.TempDir()
-	cmd := exec.Command(binaryPath, "init")
+	cmd := exec.CommandContext(context.Background(), binaryPath, "init")
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

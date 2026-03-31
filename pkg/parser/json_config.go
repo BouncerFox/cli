@@ -32,12 +32,13 @@ func checkJSONDepth(content string) bool {
 		if inString {
 			continue
 		}
-		if ch == '{' || ch == '[' {
+		switch ch {
+		case '{', '[':
 			depth++
 			if depth > maxJSONDepth {
 				return true
 			}
-		} else if ch == '}' || ch == ']' {
+		case '}', ']':
 			depth--
 		}
 	}

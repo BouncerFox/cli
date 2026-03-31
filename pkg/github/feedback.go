@@ -65,7 +65,7 @@ func DetectPRNumber(flagValue int) (int, error) {
 		return 0, nil
 	}
 
-	data, err := os.ReadFile(eventPath)
+	data, err := os.ReadFile(eventPath) //nolint:gosec // G304: reading GitHub event file from env
 	if err != nil {
 		return 0, fmt.Errorf("reading GITHUB_EVENT_PATH %q: %w", eventPath, err)
 	}
@@ -390,13 +390,13 @@ func buildCommentBody(findings []document.ScanFinding) string {
 		if line > 0 {
 			lineStr = fmt.Sprintf("%d", line)
 		}
-		sb.WriteString(fmt.Sprintf("| %s | %s | %s | %s | %s |\n",
+		fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s |\n",
 			string(f.Severity),
 			f.RuleID,
 			file,
 			lineStr,
 			escapeMarkdown(f.Message),
-		))
+		)
 	}
 
 	return sb.String()

@@ -39,7 +39,7 @@ Releases also ship standalone binaries for Linux, macOS, and Windows via
 
 ### Build from Source
 
-Requires Go 1.24+.
+Requires Go 1.25+.
 
 ```bash
 # Clone and build
@@ -51,7 +51,7 @@ go build -o bouncerfox ./cmd/bouncerfox
 go install ./cmd/bouncerfox
 
 # Build with version tag
-go build -ldflags "-X main.version=v0.2.0" -o bouncerfox ./cmd/bouncerfox
+go build -ldflags "-X main.version=v0.6.0" -o bouncerfox ./cmd/bouncerfox
 
 # Run tests
 go test ./... -race
@@ -83,9 +83,14 @@ bouncerfox init
 
 | Code | Meaning |
 |---|---|
-| `0` | No findings at or above the severity threshold |
-| `1` | One or more findings found |
+| `0` | No findings at or above the severity threshold, or "informational" verdict from platform |
+| `1` | One or more findings found (or "fail" verdict from platform) |
 | `2` | Scanner error (or platform unreachable in fail-closed mode) |
+
+In connected mode, the platform returns one of four verdicts: `pass` (no findings),
+`warn` (findings below enforcement threshold), `fail` (findings match enforcement rules),
+or `informational` (org has no enforcement configured). Both `pass` and `informational`
+map to exit code 0; `warn` maps to 0; `fail` maps to 1.
 
 ## Rules
 
@@ -279,8 +284,13 @@ is available, a check run with per-file annotations is also posted.
 ### Connected mode (platform integration)
 
 When `BOUNCERFOX_API_KEY` is set, the CLI automatically enters connected mode:
-pulls org-level rule config before scanning, uploads findings (with PR number and
-skill metadata) after, and uses the platform's verdict for the exit code.
+pulls org-level rule config (including custom rules and their match configs) before
+scanning, uploads findings (with PR number and skill metadata) after, and uses the
+platform's verdict for the exit code.
+
+Custom rules created in the platform dashboard are automatically compiled and executed
+alongside built-in rules during the scan. If the platform's built-in rules version
+differs from the CLI's, a warning is printed to stderr.
 
 In connected mode, the CLI **does not** post Check Runs or PR comments — the
 platform handles all GitHub feedback via its GitHub App. The `--github-comment`
@@ -373,10 +383,11 @@ approval flows, enforcement policies, compliance exports, and cross-repo analyti
 **Connected mode** activates automatically when `BOUNCERFOX_API_KEY` is set (via env var
 or `bouncerfox auth`). In connected mode the CLI:
 
-1. Pulls org-level rule config from the platform (cached locally with ETag validation)
-2. Runs the scan with merged config (platform config takes priority over local)
-3. Uploads findings to the platform (including PR number and skill metadata)
-4. Uses the platform's verdict for the exit code
+1. Pulls org-level rule config from the platform (cached locally with ETag validation), including custom rules with full match configs
+2. Compiles and executes platform custom rules alongside built-in rules
+3. Warns if the platform's `rules_version` differs from the CLI's built-in version
+4. Uploads findings to the platform (including PR number and skill metadata)
+5. Uses the platform's verdict for the exit code (`pass`, `warn`, `fail`, or `informational`)
 
 In connected mode, the platform owns the GitHub Check Run lifecycle — the CLI does not
 post Check Runs or PR comments. This allows the platform to update Check Runs when

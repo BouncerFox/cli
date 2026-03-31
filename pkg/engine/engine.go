@@ -11,6 +11,16 @@ import (
 	"github.com/bouncerfox/cli/pkg/rules"
 )
 
+// CustomCheck represents a compiled custom rule that runs alongside built-in rules.
+type CustomCheck struct {
+	RuleID      string
+	Name        string
+	Severity    document.FindingSeverity
+	FileTypes   []string
+	Remediation string
+	Check       func(*document.ConfigDocument) []document.ScanFinding
+}
+
 // ScanOptions controls how the engine behaves for a given scan.
 type ScanOptions struct {
 	// EnabledRules restricts the scan to only these rule IDs.
@@ -42,6 +52,9 @@ type ScanOptions struct {
 	// a rule, only the listed file types are scanned (must be a subset of the
 	// rule's DefaultFileTypes).
 	FileTypeOverrides map[string][]string
+
+	// CustomChecks holds compiled custom rules from the platform.
+	CustomChecks []CustomCheck
 }
 
 // ruleSuppressionMap defines which rules suppress other rules on the same
@@ -138,6 +151,39 @@ func Scan(ctx context.Context, docs []*document.ConfigDocument, opts ScanOptions
 				}
 				firedAt[loc][f.RuleID] = true
 
+				docFindings = append(docFindings, rawFinding{f, fp})
+			}
+		}
+
+		// Run custom checks from the platform.
+		for i := range opts.CustomChecks {
+			cc := &opts.CustomChecks[i]
+			if !fileTypeApplies(cc.FileTypes, doc.FileType) {
+				continue
+			}
+			if disabledSet[cc.RuleID] {
+				continue
+			}
+			if cc.Check == nil {
+				continue
+			}
+			if ctx.Err() != nil {
+				break
+			}
+
+			rulesRunSet[cc.RuleID] = true
+			findings := cc.Check(doc)
+
+			for _, f := range findings {
+				if sev, ok := opts.SeverityOverrides[f.RuleID]; ok {
+					f.Severity = sev
+				}
+				fp := fingerprint.ComputeFingerprint(f)
+				loc := locationKey(doc.FilePath, f.Evidence["line"])
+				if firedAt[loc] == nil {
+					firedAt[loc] = make(map[string]bool)
+				}
+				firedAt[loc][f.RuleID] = true
 				docFindings = append(docFindings, rawFinding{f, fp})
 			}
 		}

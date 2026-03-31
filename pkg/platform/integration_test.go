@@ -44,7 +44,9 @@ func TestConnectedFlow_PassVerdict(t *testing.T) {
 			json.NewEncoder(w).Encode(VerdictResponse{
 				ScanID:       "scan-1",
 				Verdict:      "pass",
-				DashboardURL: "https://app.bouncerfox.dev/scans/scan-1",
+				ScanURL:      "https://app.bouncerfox.dev/scans/scan-1",
+				FindingCount: 0,
+				ProjectID:    "proj-1",
 			})
 		default:
 			http.NotFound(w, r)

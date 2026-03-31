@@ -19,6 +19,7 @@ import (
 
 	"github.com/bouncerfox/cli/pkg/auth"
 	"github.com/bouncerfox/cli/pkg/config"
+	"github.com/bouncerfox/cli/pkg/custom"
 	"github.com/bouncerfox/cli/pkg/document"
 	"github.com/bouncerfox/cli/pkg/engine"
 	gh "github.com/bouncerfox/cli/pkg/github"
@@ -134,6 +135,7 @@ func newScanCmd() *cobra.Command {
 
 			// Connected mode: pull config from platform (before scan, after local config load).
 			var configHash string
+			var platformRulesVersion string
 			var pc *platform.HTTPClient
 			if connected {
 				pc = platform.NewHTTPClient(platformURL, apiKey)
@@ -146,8 +148,9 @@ func newScanCmd() *cobra.Command {
 				if !skipCache {
 					if entry, ok := cache.Load(tgt.ID); ok {
 						// Cache hit — use cached config.
-						if remoteCfg, parseErr := config.ParseConfigBytes([]byte(entry.Body)); parseErr == nil {
+						if remoteCfg, rv, parseErr := config.ParsePlatformConfig([]byte(entry.Body)); parseErr == nil {
 							cfg = remoteCfg
+							platformRulesVersion = rv
 							configHash = hashString(entry.Body)
 						}
 						etag = entry.ETag
@@ -165,13 +168,19 @@ func newScanCmd() *cobra.Command {
 					// Cache is still valid; configHash already set above.
 				} else {
 					// Fresh config from platform.
-					if remoteCfg, parseErr := config.ParseConfigBytes([]byte(pullResp.Body)); parseErr != nil {
+					if remoteCfg, rv, parseErr := config.ParsePlatformConfig([]byte(pullResp.Body)); parseErr != nil {
 						fmt.Fprintf(os.Stderr, "warning: could not parse platform config: %v (using local config)\n", parseErr)
 					} else {
 						cfg = remoteCfg
+						platformRulesVersion = rv
 						configHash = hashString(pullResp.Body)
 						cache.Store(tgt.ID, pullResp.Body, pullResp.ETag)
 					}
+				}
+
+				// Warn if the platform expects a different built-in rules version.
+				if platformRulesVersion != "" && platformRulesVersion != rules.RulesVersion {
+					fmt.Fprintf(os.Stderr, "warning: rules version mismatch: local=%s platform=%s\n", rules.RulesVersion, platformRulesVersion)
 				}
 			}
 
@@ -296,6 +305,33 @@ func newScanCmd() *cobra.Command {
 			opts := cfg.ToScanOptions()
 			if maxFindingsFlag > 0 {
 				opts.MaxFindings = maxFindingsFlag
+			}
+
+			// Compile custom rules from platform config.
+			for _, cr := range cfg.CustomRules {
+				if len(cr.MatchConfig) == 0 {
+					continue
+				}
+				ruleMap := map[string]any{
+					"id":          cr.RuleID,
+					"name":        cr.Name,
+					"severity":    cr.Severity,
+					"remediation": cr.Description,
+					"match":       cr.MatchConfig,
+				}
+				checkFn, compileErr := custom.Compile(ruleMap)
+				if compileErr != nil {
+					fmt.Fprintf(os.Stderr, "warning: could not compile custom rule %s: %v\n", cr.RuleID, compileErr)
+					continue
+				}
+				opts.CustomChecks = append(opts.CustomChecks, engine.CustomCheck{
+					RuleID:      cr.RuleID,
+					Name:        cr.Name,
+					Severity:    document.FindingSeverity(cr.Severity),
+					FileTypes:   cr.FileTypes,
+					Remediation: cr.Description,
+					Check:       checkFn,
+				})
 			}
 
 			// Run scan.
@@ -470,8 +506,8 @@ func newScanCmd() *cobra.Command {
 					}
 				}
 
-				if verdict.DashboardURL != "" {
-					fmt.Fprintf(os.Stderr, "Dashboard: %s\n", verdict.DashboardURL)
+				if verdict.FindingCount > 0 {
+					fmt.Fprintf(os.Stderr, "Scan report: %s\n", verdict.ScanURL)
 				}
 				for _, r := range verdict.Reasons {
 					fmt.Fprintf(os.Stderr, "  [%s] %s: %s\n", r.Rule, r.Policy, r.Message)

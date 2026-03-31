@@ -38,6 +38,17 @@ type RuleConfig struct {
 	FileTypes []string `yaml:"file_types"`
 }
 
+// CustomRuleConfig holds a custom rule definition pulled from the platform.
+type CustomRuleConfig struct {
+	RuleID      string         `yaml:"rule_id"`
+	Name        string         `yaml:"name"`
+	Severity    string         `yaml:"severity"`
+	Description string         `yaml:"description"`
+	MatchConfig map[string]any `yaml:"match_config"`
+	FileTypes   []string       `yaml:"file_types"`
+	Schema      int            `yaml:"schema_version"`
+}
+
 // Config is the parsed representation of .bouncerfox.yml.
 type Config struct {
 	// Profile is "recommended" (default) or "all_rules".
@@ -54,6 +65,9 @@ type Config struct {
 
 	// Target pins the repository identity for connected mode (e.g. "github:org/repo").
 	Target string `yaml:"target"`
+
+	// CustomRules holds custom rule definitions from the platform.
+	CustomRules []CustomRuleConfig `yaml:"-"`
 
 	// NoFloor disables the minimum rule floor (set via CLI flag, not YAML).
 	NoFloor bool `yaml:"-"`
@@ -457,4 +471,50 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 		RuleParams:        ruleParams,
 		FileTypeOverrides: fileTypeOverrides,
 	}
+}
+
+// PlatformConfig is the structured config pull response from the platform API.
+type PlatformConfig struct {
+	Enforcement  platformEnforcement  `yaml:"enforcement"`
+	Profile      platformProfile      `yaml:"profile"`
+	CustomRules  []CustomRuleConfig   `yaml:"custom_rules"`
+	RulesVersion string               `yaml:"rules_version"`
+}
+
+type platformEnforcement struct {
+	BlockOn []string `yaml:"block_on"`
+}
+
+type platformProfile struct {
+	Name          string   `yaml:"name"`
+	DisabledRules []string `yaml:"disabled_rules"`
+}
+
+// ParsePlatformConfig parses a platform config pull JSON response and returns
+// a Config along with the rules_version string. The platform response has a
+// different structure than .bouncerfox.yml so it needs its own parser.
+func ParsePlatformConfig(data []byte) (*Config, string, error) {
+	var pc PlatformConfig
+	if err := yaml.Unmarshal(data, &pc); err != nil {
+		return nil, "", fmt.Errorf("config: platform config parse error: %w", err)
+	}
+
+	cfg := &Config{
+		Profile: pc.Profile.Name,
+		Rules:   make(map[string]RuleConfig),
+	}
+	if cfg.Profile == "" {
+		cfg.Profile = ProfileRecommended
+	}
+
+	// Convert platform disabled rules to rule config overrides.
+	falseVal := false
+	for _, id := range pc.Profile.DisabledRules {
+		cfg.Rules[id] = RuleConfig{Enabled: &falseVal}
+	}
+
+	// Carry custom rules through to the config.
+	cfg.CustomRules = pc.CustomRules
+
+	return cfg, pc.RulesVersion, nil
 }

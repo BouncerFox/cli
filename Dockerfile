@@ -6,5 +6,7 @@ RUN go build -o /bf ./cmd/bouncerfox
 FROM alpine:3.19
 RUN adduser -D -u 1000 bouncerfox
 COPY --from=builder /bf /usr/local/bin/bf
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 USER bouncerfox
-ENTRYPOINT ["bf"]
+ENTRYPOINT ["entrypoint.sh"]

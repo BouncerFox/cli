@@ -1,5 +1,9 @@
 name: 'BouncerFox Scan'
-description: 'Scan AI agent config files for security and quality issues'
+author: 'BouncerFox'
+description: 'Find security risks, secrets, and quality issues in your AI agent config files before they ship'
+branding:
+  icon: 'shield'
+  color: 'orange'
 inputs:
   path:
     description: 'Path to scan'

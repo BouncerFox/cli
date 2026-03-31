@@ -457,7 +457,7 @@ func newScanCmd() *cobra.Command {
 						return fmt.Errorf("dry-run: marshal: %w", err)
 					}
 					_, _ = os.Stdout.Write(data)
-					fmt.Fprintln(os.Stdout)
+					_, _ = fmt.Fprintln(os.Stdout)
 					if len(result.Findings) > 0 {
 						os.Exit(1)
 					}

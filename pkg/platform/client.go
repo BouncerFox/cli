@@ -153,7 +153,7 @@ func (c *HTTPClient) Upload(ctx context.Context, req UploadRequest) (*VerdictRes
 	if err != nil {
 		return nil, fmt.Errorf("upload: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if resp.StatusCode == 409 {
@@ -192,7 +192,7 @@ func (c *HTTPClient) PullConfig(ctx context.Context, req PullConfigRequest) (*Pu
 	if err != nil {
 		return nil, fmt.Errorf("config pull: request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusNotModified {
 		return &PullConfigResponse{NotModified: true, ETag: resp.Header.Get("ETag")}, nil

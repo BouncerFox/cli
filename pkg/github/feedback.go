@@ -278,7 +278,7 @@ func doRequest(ctx context.Context, method, url, token string, body any) ([]byte
 	if err != nil {
 		return nil, fmt.Errorf("executing request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	data, readErr := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

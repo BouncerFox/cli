@@ -25,9 +25,9 @@ func IdempotencyKey(target, commitSHA, configHash string, fingerprints []string)
 	sort.Strings(sorted)
 
 	h := sha256.New()
-	fmt.Fprintf(h, "%s\n%s\n%s\n", target, commitSHA, configHash)
+	_, _ = fmt.Fprintf(h, "%s\n%s\n%s\n", target, commitSHA, configHash)
 	for _, fp := range sorted {
-		fmt.Fprintf(h, "%s\n", fp)
+		_, _ = fmt.Fprintf(h, "%s\n", fp)
 	}
 	return fmt.Sprintf("%x", h.Sum(nil))
 }

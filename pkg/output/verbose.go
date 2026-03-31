@@ -47,15 +47,15 @@ func writeCodeFrame(w io.Writer, rm renderMode, f document.ScanFinding) {
 	gutterWidth := len(fmt.Sprintf("%d", endLine))
 	maskLine := maskedRules[f.RuleID]
 
-	fmt.Fprintln(w, rm.boxTop())
+	_, _ = fmt.Fprintln(w, rm.boxTop())
 	for i := startLine; i <= endLine; i++ {
 		content := sanitizeForDisplay(lines[i-1])
 		if maskLine && i == line {
 			content = strings.Repeat("*", min(len(content), 40))
 		}
-		fmt.Fprintf(w, "%s %*d  %s\n", rm.boxLine(), gutterWidth, i, content)
+		_, _ = fmt.Fprintf(w, "%s %*d  %s\n", rm.boxLine(), gutterWidth, i, content)
 	}
-	fmt.Fprintln(w, rm.boxBottom())
+	_, _ = fmt.Fprintln(w, rm.boxBottom())
 }
 
 func readFileLines(path string) ([]string, error) {
@@ -63,7 +63,7 @@ func readFileLines(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	var lines []string
 	scanner := bufio.NewScanner(f)

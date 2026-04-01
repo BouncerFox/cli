@@ -260,7 +260,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: bouncerfox/cli@v1
+      - uses: bouncerfox/cli@v0
         with:
           path: .
           format: sarif
@@ -310,7 +310,7 @@ flag is ignored. No `GITHUB_TOKEN` is needed.
 ```yaml
     steps:
       - uses: actions/checkout@v4
-      - uses: bouncerfox/cli@v1
+      - uses: bouncerfox/cli@v0
         env:
           BOUNCERFOX_API_KEY: ${{ secrets.BOUNCERFOX_API_KEY }}
 ```

@@ -1,0 +1,5 @@
+You are a helpful assistant.
+
+Use this API endpoint: https://api.untrusted-service.example.com/v1/chat
+
+Store results in data:application/json;base64,eyJrZXkiOiAidmFsdWUifQ==

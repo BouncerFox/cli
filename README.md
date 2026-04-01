@@ -3,6 +3,8 @@
 Scan AI agent config files for security, quality, and compliance issues.
 Code never leaves your machine. The scanner runs entirely offline.
 
+![BouncerFox CLI Demo](demo/demo.gif)
+
 ## What It Scans
 
 | File | Description |
@@ -65,6 +67,15 @@ bouncerfox scan .
 
 # Only show high-severity and above
 bouncerfox scan . --severity high
+
+# Group by severity (great for triage and demos)
+bouncerfox scan . --group-by severity
+
+# Group by rule (fix all instances of one problem)
+bouncerfox scan . --group-by rule
+
+# Show remediation and code context
+bouncerfox scan . -v
 
 # JSON output (pipe to jq, CI scripts)
 bouncerfox scan . --format json
@@ -332,7 +343,8 @@ Scan files for security and quality issues. Defaults to scanning the current dir
 | `--strip-paths` | | `false` | Send filenames only (no full paths) in upload |
 | `--anonymous` | | `false` | Strip all identifying info from upload |
 | `--no-cache` | | `false` | Skip config cache (always pull fresh) |
-| `--verbose` | `-v` | `false` | Show code frames with surrounding context |
+| `--group-by` | | `file` | Group findings by: `file`, `rule`, `severity` |
+| `--verbose` | `-v` | `false` | Show remediation and code frames |
 | `--no-color` | | `false` | Disable colors and Unicode symbols |
 
 ### `bouncerfox rules`

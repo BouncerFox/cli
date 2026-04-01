@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "my-tool": {
+      "command": "npx",
+      "args": ["my-mcp-tool"],
+      "url": "http://mcp.example.com:3000"
+    }
+  }
+}

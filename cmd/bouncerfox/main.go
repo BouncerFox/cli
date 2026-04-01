@@ -88,6 +88,7 @@ func newScanCmd() *cobra.Command {
 		noFloorFlag     bool
 		verboseFlag     bool
 		noColorFlag     bool
+		groupByFlag     string
 	)
 
 	cmd := &cobra.Command{
@@ -202,6 +203,14 @@ func newScanCmd() *cobra.Command {
 					return fmt.Errorf("unknown severity %q: must be one of info, warn, high, critical", severityFlag)
 				}
 				cfg.SeverityFloor = sv
+			}
+
+			// Validate --group-by flag.
+			switch groupByFlag {
+			case "", "file", "rule", "severity":
+				// valid
+			default:
+				return fmt.Errorf("unknown group-by %q: must be one of file, rule, severity", groupByFlag)
 			}
 
 			// Record scan start time.
@@ -366,12 +375,24 @@ func newScanCmd() *cobra.Command {
 					NoColor:  noColorFlag,
 					IsTTY:    output.IsTerminalStdout(),
 					ScanRoot: absRootFirst,
+					GroupBy:  groupByFlag,
 					Stats: output.ScanStats{
 						FilesScanned: result.FilesScanned,
 						RulesRun:     result.RulesRun,
 						Skipped:      skippedCount,
 						Duration:     scanDuration,
 					},
+				}
+				if groupByFlag == "rule" {
+					ruleNames := make(map[string]string, len(rules.Registry)+len(opts.CustomChecks))
+					for i := range rules.Registry {
+						r := &rules.Registry[i]
+						ruleNames[r.ID] = r.Name
+					}
+					for _, cc := range opts.CustomChecks {
+						ruleNames[cc.RuleID] = cc.Name
+					}
+					fmtOpts.RuleNames = ruleNames
 				}
 				if err := output.FormatTable(result.Findings, os.Stdout, fmtOpts); err != nil {
 					return fmt.Errorf("formatting output: %w", err)
@@ -552,6 +573,7 @@ func newScanCmd() *cobra.Command {
 	_ = cmd.Flags().MarkHidden("no-floor")
 	cmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "show code frames with surrounding context")
 	cmd.Flags().BoolVar(&noColorFlag, "no-color", false, "disable colors and unicode symbols")
+	cmd.Flags().StringVar(&groupByFlag, "group-by", "file", "group findings by: file, rule, severity")
 
 	return cmd
 }

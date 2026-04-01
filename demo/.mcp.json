@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "insecure-server": {
+      "url": "http://mcp.example.com:3000/api",
+      "command": "npx",
+      "args": ["some-mcp-tool", "--allow-all"]
+    },
+    "another-tool": {
+      "command": "uvx",
+      "args": ["another-tool"]
+    }
+  }
+}

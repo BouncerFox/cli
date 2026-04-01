@@ -122,7 +122,7 @@ func TestFormatTable_ContainsFileLine(t *testing.T) {
 
 func TestFormatTable_ContainsRemediation(t *testing.T) {
 	var buf bytes.Buffer
-	if err := output.FormatTable(testFindings, &buf, output.FormatOptions{}); err != nil {
+	if err := output.FormatTable(testFindings, &buf, output.FormatOptions{Verbose: true}); err != nil {
 		t.Fatalf("FormatTable returned error: %v", err)
 	}
 	out := buf.String()
@@ -130,6 +130,17 @@ func TestFormatTable_ContainsRemediation(t *testing.T) {
 		if !strings.Contains(out, f.Remediation) {
 			t.Errorf("output missing remediation %q", f.Remediation)
 		}
+	}
+}
+
+func TestFormatTable_HidesRemediationByDefault(t *testing.T) {
+	var buf bytes.Buffer
+	if err := output.FormatTable(testFindings, &buf, output.FormatOptions{}); err != nil {
+		t.Fatalf("FormatTable returned error: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "remove secret") {
+		t.Error("remediation should be hidden without Verbose")
 	}
 }
 

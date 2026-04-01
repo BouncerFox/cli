@@ -6,35 +6,47 @@ Output demo/demo.gif
 Set Shell "bash"
 Set FontSize 14
 Set Width 1200
-Set Height 900
+Set Height 800
 Set Padding 20
 Set Theme "Catppuccin Mocha"
-Set TypingSpeed 50ms
+Set TypingSpeed 40ms
 
-Sleep 1s
+Sleep 500ms
 
 Type "# BouncerFox: scan AI agent configs for security issues"
 Enter
-Sleep 1.5s
+Sleep 1s
 
 Type "bouncerfox scan demo/compact/"
 Enter
 Sleep 4s
 
-Type "# Group by severity to triage critical issues first"
+Sleep 2s
+
+Type "clear"
 Enter
-Sleep 1.5s
+Sleep 500ms
+
+Type "# Group findings by severity to triage critical issues first"
+Enter
+Sleep 1s
 
 Type "bouncerfox scan demo/compact/ --group-by severity"
 Enter
-Sleep 5s
+Sleep 4s
 
-Type "# Show remediation advice with -v"
-Enter
-Sleep 1.5s
+Sleep 2s
 
-Type "bouncerfox scan demo/compact/ -v 2>/dev/null | head -20"
+Type "clear"
 Enter
-Sleep 5s
+Sleep 500ms
+
+Type "# Show code context with -v"
+Enter
+Sleep 1s
+
+Type "bouncerfox scan demo/compact/ -v 2>/dev/null | head -25"
+Enter
+Sleep 4s
 
 Sleep 2s

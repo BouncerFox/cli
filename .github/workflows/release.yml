@@ -35,6 +35,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
+      - name: Update major version tag
+        run: |
+          MAJOR=$(echo "${GITHUB_REF_NAME}" | cut -d. -f1)
+          git tag -f "${MAJOR}" "${GITHUB_REF_NAME}"
+          git push origin "${MAJOR}" --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v2
         with:

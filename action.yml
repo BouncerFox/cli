@@ -20,9 +20,6 @@ inputs:
   github-comment:
     description: 'Post findings as PR comment with inline annotations'
     default: 'true'
-  ignore:
-    description: 'Comma-separated gitignore-style globs to skip (e.g. "**/testdata/**,demo/**")'
-    default: ''
   config:
     description: 'Config file path (standalone mode only)'
     default: ''

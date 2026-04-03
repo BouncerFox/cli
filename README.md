@@ -265,7 +265,6 @@ jobs:
           path: .
           format: sarif
           severity: warn
-          ignore: 'vendor/**,**/testdata/**'
 ```
 
 ### SARIF upload to GitHub Code Scanning
@@ -346,7 +345,7 @@ Scan files for security and quality issues. Defaults to scanning the current dir
 | `--no-cache` | | `false` | Skip config cache (always pull fresh) |
 | `--group-by` | | `file` | Group findings by: `file`, `rule`, `severity` |
 | `--verbose` | `-v` | `false` | Show remediation and code frames |
-| `--ignore` | | | Gitignore-style globs to skip (repeatable, comma-separated) |
+| `--ignore` | | | Gitignore-style globs to skip (repeatable) |
 | `--no-color` | | `false` | Disable colors and Unicode symbols |
 
 ### `bouncerfox rules`

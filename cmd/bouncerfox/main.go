@@ -585,7 +585,7 @@ func newScanCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "show code frames with surrounding context")
 	cmd.Flags().BoolVar(&noColorFlag, "no-color", false, "disable colors and unicode symbols")
 	cmd.Flags().StringVar(&groupByFlag, "group-by", "file", "group findings by: file, rule, severity")
-	cmd.Flags().StringSliceVar(&ignorePatterns, "ignore", nil, "gitignore-style globs to skip (repeatable, comma-separated)")
+	cmd.Flags().StringArrayVar(&ignorePatterns, "ignore", nil, "gitignore-style globs to skip (repeatable)")
 
 	return cmd
 }

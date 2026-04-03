@@ -10,10 +10,6 @@ dist/
 .env
 .env.*
 
-# Config with potential secrets
-/.bouncerfox.yml
-/.bouncerfox.yaml
-
 # IDE
 .idea/
 .vscode/

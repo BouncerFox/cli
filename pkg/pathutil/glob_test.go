@@ -34,6 +34,13 @@ func TestMatchGlob(t *testing.T) {
 		{"vendor/**/*.go", "vendor/file.go", true},
 		{"vendor/**/*.go", "vendor/pkg/file.md", false},
 
+		// Multiple ** segments
+		{"**/testdata/**", "cmd/bouncerfox/testdata/bad-skill/.claude/skills/bad/SKILL.md", true},
+		{"**/testdata/**", "testdata/file.md", true},
+		{"**/testdata/**", "cmd/testdata/file.md", true},
+		{"**/testdata/**", "cmd/bouncerfox/notestdata/file.md", false},
+		{"**/vendor/**/test/**", "src/vendor/pkg/test/file.go", true},
+
 		// Edge cases
 		{"", "", true},
 		{"*.generated.md", "foo.generated.md", true},
@@ -61,5 +68,15 @@ func TestMatchGlob_PathTraversal(t *testing.T) {
 
 func TestMatchGlob_VeryLongPath(t *testing.T) {
 	path := strings.Repeat("a/", 1000) + "file.md"
-	_ = MatchGlob("**/*.md", path)
+	if !MatchGlob("**/*.md", path) {
+		t.Error("expected long path to match **/*.md")
+	}
+}
+
+func TestMatchGlob_DepthLimit(t *testing.T) {
+	// Pattern with many ** segments should not hang; depth limit kicks in.
+	pattern := strings.Repeat("**/", 20) + "*.md"
+	path := strings.Repeat("a/", 50) + "file.md"
+	// We don't care about the result, just that it completes quickly.
+	_ = MatchGlob(pattern, path)
 }

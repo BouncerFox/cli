@@ -43,3 +43,5 @@ jobs:
 
       - name: Run BouncerFox
         uses: ./
+        with:
+          ignore: '**/testdata/**,demo/**'

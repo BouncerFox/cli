@@ -91,6 +91,7 @@ func newScanCmd() *cobra.Command {
 		verboseFlag     bool
 		noColorFlag     bool
 		groupByFlag     string
+		ignorePatterns  []string
 	)
 
 	cmd := &cobra.Command{
@@ -115,6 +116,9 @@ func newScanCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
 			}
+
+			// Merge CLI --ignore patterns into config.
+			cfg.Ignore = append(cfg.Ignore, ignorePatterns...)
 
 			// Connected mode detection.
 			apiKey := auth.ResolveAPIKey()
@@ -581,6 +585,7 @@ func newScanCmd() *cobra.Command {
 	cmd.Flags().BoolVarP(&verboseFlag, "verbose", "v", false, "show code frames with surrounding context")
 	cmd.Flags().BoolVar(&noColorFlag, "no-color", false, "disable colors and unicode symbols")
 	cmd.Flags().StringVar(&groupByFlag, "group-by", "file", "group findings by: file, rule, severity")
+	cmd.Flags().StringSliceVar(&ignorePatterns, "ignore", nil, "gitignore-style globs to skip (repeatable, comma-separated)")
 
 	return cmd
 }

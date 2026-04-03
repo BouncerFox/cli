@@ -415,7 +415,7 @@ func buildCommentBody(findings []document.ScanFinding) string {
 		fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s |\n",
 			string(f.Severity),
 			escapeMarkdown(f.RuleID),
-			file,
+			escapeMarkdown(file),
 			lineStr,
 			escapeMarkdown(f.Message),
 		)

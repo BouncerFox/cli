@@ -102,36 +102,45 @@ type HTTPClient struct {
 	httpClient *http.Client
 }
 
-// allowedDomains is the set of permitted platform API hostnames.
-var allowedDomains = []string{"api.bouncerfox.dev"}
+// AllowedDomains is the set of permitted BouncerFox hostnames.
+// Used by both platform client construction and browser URL validation.
+var AllowedDomains = []string{"api.bouncerfox.dev", "app.bouncerfox.dev"}
 
-// NewHTTPClient creates a platform HTTP client with HTTPS and domain validation.
+// ValidateURL checks that a URL uses HTTPS and targets an allowed domain.
 // Localhost and 127.0.0.1 are exempt for development/testing.
-func NewHTTPClient(baseURL, apiKey string) (*HTTPClient, error) {
-	u, err := url.Parse(baseURL)
+func ValidateURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid platform URL %q: %w", baseURL, err)
+		return fmt.Errorf("invalid URL %q: %w", rawURL, err)
 	}
 	host := u.Hostname()
 	isLocal := host == "localhost" || host == "127.0.0.1"
 
 	if u.Scheme != "https" && !isLocal {
-		return nil, fmt.Errorf("platform URL must use HTTPS (got %q)", baseURL)
+		return fmt.Errorf("URL must use HTTPS (got %q)", rawURL)
 	}
 
 	if !isLocal {
 		allowed := false
-		for _, d := range allowedDomains {
+		for _, d := range AllowedDomains {
 			if host == d {
 				allowed = true
 				break
 			}
 		}
 		if !allowed {
-			return nil, fmt.Errorf("platform URL domain %q is not in the allowed list", host)
+			return fmt.Errorf("URL domain %q is not in the allowed list", host)
 		}
 	}
+	return nil
+}
 
+// NewHTTPClient creates a platform HTTP client with HTTPS and domain validation.
+// Localhost and 127.0.0.1 are exempt for development/testing.
+func NewHTTPClient(baseURL, apiKey string) (*HTTPClient, error) {
+	if err := ValidateURL(baseURL); err != nil {
+		return nil, err
+	}
 	return &HTTPClient{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,

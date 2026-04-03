@@ -78,41 +78,23 @@ func locationKey(filePath string, line any) string {
 	return filePath + ":" + fmt.Sprint(line)
 }
 
-// safeCheckRule wraps a rule's Check call with panic recovery. If the check
-// panics, a synthetic warning finding is returned instead of crashing.
-func safeCheckRule(rule *document.RuleMetadata, doc *document.ConfigDocument, rc *document.RuleContext) (findings []document.ScanFinding, panicked bool) {
+// safeCheck wraps a check function with panic recovery. If the check panics,
+// a synthetic warning finding is returned instead of crashing.
+func safeCheck(ruleID string, filePath string, checkFn func() []document.ScanFinding) (findings []document.ScanFinding, panicked bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			findings = []document.ScanFinding{{
-				RuleID:   rule.ID,
+				RuleID:   ruleID,
 				Severity: document.SeverityWarn,
 				Message:  fmt.Sprintf("rule failed to execute (panic recovered: %v)", r),
 				Evidence: map[string]any{
-					"file": doc.FilePath,
+					"file": filePath,
 				},
 			}}
 			panicked = true
 		}
 	}()
-	return rule.Check(doc, rc), false
-}
-
-// safeCheckCustomRule wraps a custom rule's Check call with panic recovery.
-func safeCheckCustomRule(cc *CustomCheck, doc *document.ConfigDocument) (findings []document.ScanFinding, panicked bool) {
-	defer func() {
-		if r := recover(); r != nil {
-			findings = []document.ScanFinding{{
-				RuleID:   cc.RuleID,
-				Severity: document.SeverityWarn,
-				Message:  fmt.Sprintf("custom rule failed to execute (panic recovered: %v)", r),
-				Evidence: map[string]any{
-					"file": doc.FilePath,
-				},
-			}}
-			panicked = true
-		}
-	}()
-	return cc.Check(doc), false
+	return checkFn(), false
 }
 
 // Scan runs all applicable rules from rules.Registry against each document in
@@ -171,7 +153,7 @@ func Scan(ctx context.Context, docs []*document.ConfigDocument, opts ScanOptions
 			}
 
 			rulesRunSet[rule.ID] = true
-			findings, _ := safeCheckRule(rule, doc, rc)
+			findings, _ := safeCheck(rule.ID, doc.FilePath, func() []document.ScanFinding { return rule.Check(doc, rc) })
 
 			for _, f := range findings {
 				// Apply severity override if configured.
@@ -209,7 +191,7 @@ func Scan(ctx context.Context, docs []*document.ConfigDocument, opts ScanOptions
 			}
 
 			rulesRunSet[cc.RuleID] = true
-			findings, _ := safeCheckCustomRule(cc, doc)
+			findings, _ := safeCheck(cc.RuleID, doc.FilePath, func() []document.ScanFinding { return cc.Check(doc) })
 
 			for _, f := range findings {
 				if sev, ok := opts.SeverityOverrides[f.RuleID]; ok {

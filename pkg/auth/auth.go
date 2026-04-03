@@ -43,11 +43,13 @@ func ResolveAPIKey() string {
 	return key
 }
 
-// ValidateAPIKeyFormat rejects API keys containing newlines, carriage returns,
-// or null bytes.
+// ValidateAPIKeyFormat rejects API keys containing control characters that
+// could cause header injection or protocol-level parsing issues.
 func ValidateAPIKeyFormat(key string) error {
-	if strings.ContainsAny(key, "\n\r\x00") {
-		return fmt.Errorf("API key contains invalid characters (newline, carriage return, or null byte)")
+	for _, c := range key {
+		if c < 0x20 || c == 0x7f {
+			return fmt.Errorf("API key contains invalid control character (0x%02x)", c)
+		}
 	}
 	return nil
 }

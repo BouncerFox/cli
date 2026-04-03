@@ -427,6 +427,7 @@ func buildCommentBody(findings []document.ScanFinding) string {
 // escapeMarkdown escapes characters that could be used for markdown injection
 // in PR comments (pipes, links, and HTML tags).
 func escapeMarkdown(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;") // must be first to avoid double-escaping
 	s = strings.ReplaceAll(s, "|", "\\|")
 	s = strings.ReplaceAll(s, "[", "\\[")
 	s = strings.ReplaceAll(s, "]", "\\]")

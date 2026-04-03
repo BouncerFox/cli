@@ -11,7 +11,6 @@ import (
 	"io"
 	"io/fs"
 	"log"
-	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -739,32 +738,9 @@ func newAuthCmd() *cobra.Command {
 }
 
 // validateBrowserURL checks that a URL is safe to open in the user's browser.
-// Allows HTTPS on known BouncerFox domains and HTTP on localhost.
+// Delegates to platform.ValidateURL for shared HTTPS + domain allowlist logic.
 func validateBrowserURL(rawURL string) error {
-	u, err := neturl.Parse(rawURL)
-	if err != nil {
-		return fmt.Errorf("invalid URL %q: %w", rawURL, err)
-	}
-	host := u.Hostname()
-	isLocal := host == "localhost" || host == "127.0.0.1"
-
-	if u.Scheme != "https" && !isLocal {
-		return fmt.Errorf("URL must use HTTPS (got %q)", rawURL)
-	}
-
-	if !isLocal {
-		allowed := false
-		for _, d := range []string{"app.bouncerfox.dev", "api.bouncerfox.dev"} {
-			if host == d {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
-			return fmt.Errorf("URL domain %q is not trusted", host)
-		}
-	}
-	return nil
+	return platform.ValidateURL(rawURL)
 }
 
 // openBrowser opens the given URL in the system browser (best-effort).

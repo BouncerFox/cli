@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,16 +14,42 @@ const defaultPlatformURL = "https://api.bouncerfox.dev"
 
 // ResolveAPIKey returns the API key from env var or credentials file.
 // Priority: BOUNCERFOX_API_KEY env > ~/.config/bouncerfox/credentials.
-// Returns "" if no key found.
+// Returns "" if no key found or the key has an invalid format.
 func ResolveAPIKey() string {
 	if key := os.Getenv("BOUNCERFOX_API_KEY"); key != "" {
+		if ValidateAPIKeyFormat(key) != nil {
+			return ""
+		}
 		return key
 	}
-	data, err := os.ReadFile(credentialsPath())
+	path := credentialsPath()
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(data))
+
+	// Warn if credentials file has overly broad permissions.
+	if info, statErr := os.Stat(path); statErr == nil {
+		mode := info.Mode()
+		if mode&0o077 != 0 {
+			fmt.Fprintf(os.Stderr, "warning: credentials file %s has overly broad permissions (%o), expected 0600\n", path, mode.Perm())
+		}
+	}
+
+	key := strings.TrimSpace(string(data))
+	if ValidateAPIKeyFormat(key) != nil {
+		return ""
+	}
+	return key
+}
+
+// ValidateAPIKeyFormat rejects API keys containing newlines, carriage returns,
+// or null bytes.
+func ValidateAPIKeyFormat(key string) error {
+	if strings.ContainsAny(key, "\n\r\x00") {
+		return fmt.Errorf("API key contains invalid characters (newline, carriage return, or null byte)")
+	}
+	return nil
 }
 
 // IsConnected returns true if an API key is available (connected mode).

@@ -17,6 +17,30 @@ import (
 // line numbers so that downstream rules (SEC_006, SEC_018) can skip them.
 const sec001LinesKey = "_sec001_lines"
 
+var secretPatternNames = []string{
+	"anthropic_api_key",
+	"stripe_key",
+	"slack_token",
+	"google_api_key",
+	"jwt_token",
+	"generic_secret_assignment",
+	"openai_api_key",
+	"github_pat_classic",
+	"github_fine_grained_token",
+	"github_pat_fine",
+	"huggingface_token",
+	"aws_access_key",
+	"private_key_pem",
+	"generic_password_assignment",
+}
+
+func init() {
+	if len(secretPatternNames) != len(secretPatterns) {
+		panic(fmt.Sprintf("secretPatternNames length %d != secretPatterns length %d",
+			len(secretPatternNames), len(secretPatterns)))
+	}
+}
+
 var secretPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`sk-ant-api03-[a-zA-Z0-9_-]{90,}`),
 	regexp.MustCompile(`(sk|pk)_(live|test)_[a-zA-Z0-9]{24,}`),
@@ -252,6 +276,7 @@ func CheckSEC001(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 						"file":    doc.FilePath,
 						"line":    lineNum,
 						"snippet": "",
+						"pattern": secretPatternNames[idx],
 					},
 					Remediation: "Remove hardcoded secrets and use environment variables or a secret manager.",
 				})

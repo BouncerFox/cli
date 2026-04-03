@@ -1,6 +1,8 @@
 package platform
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -46,6 +48,26 @@ func TestConfigCache_Invalidate(t *testing.T) {
 	_, ok := cache.Load("key3")
 	if ok {
 		t.Error("expected cache miss after invalidation")
+	}
+}
+
+func TestConfigCache_EnforcesPermissions(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "cache")
+	// Pre-create the dir with overly broad permissions.
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// NewConfigCache should enforce 0700.
+	_ = NewConfigCache(dir)
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0o700 {
+		t.Errorf("expected dir permissions 0700, got %o", perm)
 	}
 }
 

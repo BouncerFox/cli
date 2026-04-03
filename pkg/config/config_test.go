@@ -291,11 +291,11 @@ func TestToScanOptions_SeverityFloor(t *testing.T) {
 }
 
 // TestToScanOptions_DisabledRule verifies a disabled rule appears in DisabledRules.
-// Uses SEC_006 (non-floor rule) to avoid the minimum rule floor enforcement.
+// Uses QA_002 (non-SEC rule) to avoid the floor enforcement on SEC_xxx rules.
 func TestToScanOptions_DisabledRule(t *testing.T) {
 	yaml := `
 rules:
-  SEC_006:
+  QA_002:
     enabled: false
 `
 	dir := writeConfig(t, yaml)
@@ -307,12 +307,12 @@ rules:
 
 	found := false
 	for _, id := range opts.DisabledRules {
-		if id == "SEC_006" {
+		if id == "QA_002" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("SEC_006 should be in DisabledRules, got: %v", opts.DisabledRules)
+		t.Errorf("QA_002 should be in DisabledRules, got: %v", opts.DisabledRules)
 	}
 }
 
@@ -465,6 +465,81 @@ func TestConfig_NoFloorBypasses(t *testing.T) {
 	}
 	if !disabled["SEC_001"] {
 		t.Error("SEC_001 should be disableable when NoFloor=true")
+	}
+}
+
+func TestConfig_FloorProtectsAllSECRules(t *testing.T) {
+	// SEC_009 is not in the original floorRules map but should still be protected.
+	dir := writeConfig(t, "profile: all_rules\nrules:\n  SEC_009:\n    enabled: false\n")
+	cfg, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := cfg.ToScanOptions()
+	disabled := make(map[string]bool)
+	for _, d := range opts.DisabledRules {
+		disabled[d] = true
+	}
+	if disabled["SEC_009"] {
+		t.Error("SEC_009 should not be disableable via config")
+	}
+}
+
+func TestConfig_FloorProtectsSEC001(t *testing.T) {
+	// Existing behavior: SEC_001 is still protected.
+	dir := writeConfig(t, "profile: all_rules\nrules:\n  SEC_001:\n    enabled: false\n")
+	cfg, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := cfg.ToScanOptions()
+	disabled := make(map[string]bool)
+	for _, d := range opts.DisabledRules {
+		disabled[d] = true
+	}
+	if disabled["SEC_001"] {
+		t.Error("SEC_001 should not be disableable via config")
+	}
+}
+
+func TestConfig_FloorAllowsQADisable(t *testing.T) {
+	// Non-SEC rules should still be disableable.
+	dir := writeConfig(t, "profile: all_rules\nrules:\n  QA_001:\n    enabled: false\n")
+	cfg, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := cfg.ToScanOptions()
+	disabled := make(map[string]bool)
+	for _, d := range opts.DisabledRules {
+		disabled[d] = true
+	}
+	if !disabled["QA_001"] {
+		t.Error("QA_001 should be disableable via config")
+	}
+}
+
+func TestConfig_FloorProtectsAllSECRules_Bulk(t *testing.T) {
+	// Disabling many SEC rules at once: all should be rejected.
+	secRules := []string{"SEC_001", "SEC_003", "SEC_004", "SEC_006", "SEC_009", "SEC_018"}
+	yamlStr := "profile: all_rules\nrules:\n"
+	for _, r := range secRules {
+		yamlStr += "  " + r + ":\n    enabled: false\n"
+	}
+	dir := writeConfig(t, yamlStr)
+	cfg, err := config.LoadConfig(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts := cfg.ToScanOptions()
+	disabled := make(map[string]bool)
+	for _, d := range opts.DisabledRules {
+		disabled[d] = true
+	}
+	for _, r := range secRules {
+		if disabled[r] {
+			t.Errorf("SEC rule %s should not be disableable via config", r)
+		}
 	}
 }
 

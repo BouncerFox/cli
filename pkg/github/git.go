@@ -4,11 +4,14 @@ import (
 	"context"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // runGitRemote runs `git remote get-url origin` and returns its output.
-func runGitRemote() (string, error) {
-	out, err := exec.CommandContext(context.Background(), "git", "remote", "get-url", "origin").Output()
+func runGitRemote(ctx context.Context) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "git", "remote", "get-url", "origin").Output()
 	if err != nil {
 		return "", err
 	}

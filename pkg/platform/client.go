@@ -102,14 +102,41 @@ type HTTPClient struct {
 	httpClient *http.Client
 }
 
-// NewHTTPClient creates a platform HTTP client.
-// Accepts http:// for testing; ValidateHTTPS should be called at CLI entry point.
-func NewHTTPClient(baseURL, apiKey string) *HTTPClient {
+// allowedDomains is the set of permitted platform API hostnames.
+var allowedDomains = []string{"api.bouncerfox.dev"}
+
+// NewHTTPClient creates a platform HTTP client with HTTPS and domain validation.
+// Localhost and 127.0.0.1 are exempt for development/testing.
+func NewHTTPClient(baseURL, apiKey string) (*HTTPClient, error) {
+	u, err := url.Parse(baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid platform URL %q: %w", baseURL, err)
+	}
+	host := u.Hostname()
+	isLocal := host == "localhost" || host == "127.0.0.1"
+
+	if u.Scheme != "https" && !isLocal {
+		return nil, fmt.Errorf("platform URL must use HTTPS (got %q)", baseURL)
+	}
+
+	if !isLocal {
+		allowed := false
+		for _, d := range allowedDomains {
+			if host == d {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, fmt.Errorf("platform URL domain %q is not in the allowed list", host)
+		}
+	}
+
 	return &HTTPClient{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
-	}
+	}, nil
 }
 
 // ValidateHTTPS returns an error if the URL does not use HTTPS.
@@ -155,7 +182,10 @@ func (c *HTTPClient) Upload(ctx context.Context, req UploadRequest) (*VerdictRes
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if readErr != nil {
+		return nil, fmt.Errorf("reading upload response: %w", readErr)
+	}
 	if resp.StatusCode == 409 {
 		return nil, &SupersededError{Message: string(body)}
 	}

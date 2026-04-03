@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -448,8 +449,8 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 	if !c.NoFloor {
 		var filtered []string
 		for _, d := range disabled {
-			if floorRules[d] {
-				fmt.Fprintf(os.Stderr, "warning: critical rule %s cannot be disabled; enforcing local floor\n", d)
+			if strings.HasPrefix(d, "SEC_") {
+				fmt.Fprintf(os.Stderr, "warning: cannot disable floor-protected rule %s via config\n", d)
 				continue
 			}
 			filtered = append(filtered, d)

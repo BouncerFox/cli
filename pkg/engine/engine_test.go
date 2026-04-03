@@ -385,6 +385,131 @@ func TestFileTypeOverrides_NarrowsRule(t *testing.T) {
 	}
 }
 
+// TestScan_PanicRecovery verifies that a panicking rule produces a synthetic
+// warning finding instead of crashing the scan.
+func TestScan_PanicRecovery(t *testing.T) {
+	// Save original registry length and restore after test.
+	origLen := len(rules.Registry)
+	defer func() { rules.Registry = rules.Registry[:origLen] }()
+
+	// Append a test rule that panics.
+	rules.Registry = append(rules.Registry, document.RuleMetadata{
+		ID:               "TEST_PANIC",
+		Name:             "Panicking test rule",
+		Category:         "test",
+		DefaultSeverity:  document.SeverityCritical,
+		DefaultFileTypes: []string{document.FileTypeSkillMD},
+		Check: func(_ *document.ConfigDocument, _ *document.RuleContext) []document.ScanFinding {
+			panic("test panic")
+		},
+	})
+
+	doc := makeSkill(t, "---\nname: ok\ndescription: A test skill for panic recovery.\n---\nSome content.\n")
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
+		EnabledRules: []string{"TEST_PANIC"},
+	})
+
+	if len(result.Findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d: %v", len(result.Findings), ruleIDs(result.Findings))
+	}
+	f := result.Findings[0]
+	if f.RuleID != "TEST_PANIC" {
+		t.Errorf("expected RuleID TEST_PANIC, got %s", f.RuleID)
+	}
+	if f.Severity != document.SeverityWarn {
+		t.Errorf("expected severity WARN, got %s", f.Severity)
+	}
+	if !strings.Contains(f.Message, "panic recovered") {
+		t.Errorf("expected message to contain 'panic recovered', got: %s", f.Message)
+	}
+}
+
+// TestScan_PanicRecovery_SubsequentRulesStillRun verifies that rules after a
+// panicking rule still execute and produce findings.
+func TestScan_PanicRecovery_SubsequentRulesStillRun(t *testing.T) {
+	origLen := len(rules.Registry)
+	defer func() { rules.Registry = rules.Registry[:origLen] }()
+
+	rules.Registry = append(rules.Registry,
+		document.RuleMetadata{
+			ID:               "TEST_PANIC_FIRST",
+			Name:             "Panicking rule",
+			Category:         "test",
+			DefaultSeverity:  document.SeverityCritical,
+			DefaultFileTypes: []string{document.FileTypeSkillMD},
+			Check: func(_ *document.ConfigDocument, _ *document.RuleContext) []document.ScanFinding {
+				panic("boom")
+			},
+		},
+		document.RuleMetadata{
+			ID:               "TEST_AFTER_PANIC",
+			Name:             "Rule after panic",
+			Category:         "test",
+			DefaultSeverity:  document.SeverityInfo,
+			DefaultFileTypes: []string{document.FileTypeSkillMD},
+			Check: func(doc *document.ConfigDocument, _ *document.RuleContext) []document.ScanFinding {
+				return []document.ScanFinding{{
+					RuleID:   "TEST_AFTER_PANIC",
+					Severity: document.SeverityInfo,
+					Message:  "post-panic rule fired",
+					Evidence: map[string]any{"file": doc.FilePath},
+				}}
+			},
+		},
+	)
+
+	doc := makeSkill(t, "---\nname: ok\ndescription: A test skill for panic ordering.\n---\nContent.\n")
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
+		EnabledRules: []string{"TEST_PANIC_FIRST", "TEST_AFTER_PANIC"},
+	})
+
+	foundPanic := false
+	foundAfter := false
+	for _, f := range result.Findings {
+		switch f.RuleID {
+		case "TEST_PANIC_FIRST":
+			foundPanic = true
+		case "TEST_AFTER_PANIC":
+			foundAfter = true
+		}
+	}
+	if !foundPanic {
+		t.Error("expected synthetic finding from panicking rule")
+	}
+	if !foundAfter {
+		t.Error("expected finding from rule after the panicking rule")
+	}
+}
+
+// TestScan_CustomRulePanicRecovery verifies that a panicking custom rule
+// produces a synthetic warning finding instead of crashing.
+func TestScan_CustomRulePanicRecovery(t *testing.T) {
+	doc := makeSkill(t, "---\nname: ok\ndescription: A test skill for custom panic.\n---\nContent.\n")
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
+		EnabledRules: []string{}, // no built-in rules
+		CustomChecks: []engine.CustomCheck{{
+			RuleID:    "CUSTOM_PANIC",
+			Name:      "Panicking custom rule",
+			Severity:  document.SeverityCritical,
+			FileTypes: []string{document.FileTypeSkillMD},
+			Check: func(_ *document.ConfigDocument) []document.ScanFinding {
+				panic("custom boom")
+			},
+		}},
+	})
+
+	foundPanic := false
+	for _, f := range result.Findings {
+		if f.RuleID == "CUSTOM_PANIC" && f.Severity == document.SeverityWarn &&
+			strings.Contains(f.Message, "panic recovered") {
+			foundPanic = true
+		}
+	}
+	if !foundPanic {
+		t.Error("expected synthetic warning finding from panicking custom rule")
+	}
+}
+
 // ruleIDs returns a slice of rule IDs for error messages.
 func ruleIDs(findings []document.ScanFinding) []string {
 	ids := make([]string, len(findings))

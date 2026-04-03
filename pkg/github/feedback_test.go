@@ -84,7 +84,7 @@ func TestDetectPRNumber_MissingFile(t *testing.T) {
 
 func TestDetectRepoInfo_EnvVar(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "acme/my-repo")
-	owner, repo, err := DetectRepoInfo()
+	owner, repo, err := DetectRepoInfo(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -93,9 +93,53 @@ func TestDetectRepoInfo_EnvVar(t *testing.T) {
 	}
 }
 
+func TestDetectRepoInfo_DotsAndHyphens(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "owner.name/repo-name")
+	owner, repo, err := DetectRepoInfo(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if owner != "owner.name" || repo != "repo-name" {
+		t.Errorf("got owner=%q repo=%q, want owner.name/repo-name", owner, repo)
+	}
+}
+
+func TestDetectRepoInfo_PathTraversal(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "owner/repo/../../api/v3/users")
+	_, _, err := DetectRepoInfo(context.Background())
+	if err == nil {
+		t.Fatal("expected error for path traversal in GITHUB_REPOSITORY, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid GITHUB_REPOSITORY") {
+		t.Errorf("expected 'invalid GITHUB_REPOSITORY' in error, got: %v", err)
+	}
+}
+
+func TestDetectRepoInfo_NullByte(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "owner/repo%00evil")
+	_, _, err := DetectRepoInfo(context.Background())
+	if err == nil {
+		t.Fatal("expected error for null byte in GITHUB_REPOSITORY, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid GITHUB_REPOSITORY") {
+		t.Errorf("expected 'invalid GITHUB_REPOSITORY' in error, got: %v", err)
+	}
+}
+
+func TestDetectRepoInfo_EmptyFallsThrough(t *testing.T) {
+	t.Setenv("GITHUB_REPOSITORY", "")
+	// With empty GITHUB_REPOSITORY, it falls through to git remote parsing.
+	// We don't control git remote here, so just verify it doesn't return a
+	// validation error (it will return a git remote error instead).
+	_, _, err := DetectRepoInfo(context.Background())
+	if err != nil && strings.Contains(err.Error(), "invalid GITHUB_REPOSITORY") {
+		t.Errorf("empty GITHUB_REPOSITORY should not trigger validation error, got: %v", err)
+	}
+}
+
 func TestDetectRepoInfo_MalformedEnvVar(t *testing.T) {
 	t.Setenv("GITHUB_REPOSITORY", "no-slash")
-	_, _, err := DetectRepoInfo()
+	_, _, err := DetectRepoInfo(context.Background())
 	if err == nil {
 		t.Fatal("expected error for malformed GITHUB_REPOSITORY, got nil")
 	}
@@ -517,6 +561,103 @@ func TestPostPRComment_APIError(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected error for 403 response, got nil")
+	}
+}
+
+// ---- escapeMarkdown ---------------------------------------------------------
+
+func TestEscapeMarkdown_PipeEscaping(t *testing.T) {
+	got := escapeMarkdown("col1 | col2")
+	want := "col1 \\| col2"
+	if got != want {
+		t.Errorf("escapeMarkdown pipe: got %q, want %q", got, want)
+	}
+}
+
+func TestEscapeMarkdown_NormalRuleID(t *testing.T) {
+	got := escapeMarkdown("CUSTOM_001")
+	if got != "CUSTOM_001" {
+		t.Errorf("escapeMarkdown normal rule ID: got %q, want %q", got, "CUSTOM_001")
+	}
+}
+
+func TestEscapeMarkdown_BracketLink(t *testing.T) {
+	input := "[Click here](https://evil.com)"
+	got := escapeMarkdown(input)
+	want := "\\[Click here\\](https://evil.com)"
+	if got != want {
+		t.Errorf("escapeMarkdown brackets: got %q, want %q", got, want)
+	}
+}
+
+func TestEscapeMarkdown_AngleBracketHTML(t *testing.T) {
+	input := "<img src=x>"
+	got := escapeMarkdown(input)
+	want := "&lt;img src=x&gt;"
+	if got != want {
+		t.Errorf("escapeMarkdown angle brackets: got %q, want %q", got, want)
+	}
+}
+
+func TestEscapeMarkdown_PipeAndBrackets(t *testing.T) {
+	input := "found | [link](url)"
+	got := escapeMarkdown(input)
+	want := "found \\| \\[link\\](url)"
+	if got != want {
+		t.Errorf("escapeMarkdown mixed: got %q, want %q", got, want)
+	}
+}
+
+func TestBuildCommentBody_EscapesRuleID(t *testing.T) {
+	findings := []document.ScanFinding{
+		{
+			RuleID:   "[Click here](https://evil.com)",
+			Severity: document.SeverityWarn,
+			Message:  "test message",
+			Evidence: map[string]any{"file": "a.md", "line": 1},
+		},
+	}
+	body := buildCommentBody(findings)
+	if strings.Contains(body, "[Click here]") {
+		t.Error("expected rule ID brackets to be escaped in comment body")
+	}
+	if !strings.Contains(body, "\\[Click here\\]") {
+		t.Error("expected escaped brackets in comment body")
+	}
+}
+
+func TestDoRequest_403BodyTruncatedTo500(t *testing.T) {
+	// Build a 1000-character response body.
+	longBody := strings.Repeat("x", 1000)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(longBody))
+	}))
+	defer srv.Close()
+
+	orig := baseURL
+	baseURL = srv.URL
+	defer func() { baseURL = orig }()
+
+	_, err := doRequest(context.Background(), http.MethodGet, srv.URL+"/test", "tok", nil)
+	if err == nil {
+		t.Fatal("expected error for 403 response")
+	}
+
+	errMsg := err.Error()
+	// The error message should contain only 500 chars of the body, not the full 1000.
+	if strings.Contains(errMsg, longBody) {
+		t.Errorf("error message should not contain the full 1000-char body")
+	}
+	truncated := strings.Repeat("x", 500)
+	if !strings.Contains(errMsg, truncated) {
+		t.Errorf("error message should contain 500 chars of body")
+	}
+	// Verify it does NOT contain 501 x's in a row.
+	tooLong := strings.Repeat("x", 501)
+	if strings.Contains(errMsg, tooLong) {
+		t.Errorf("error message contains more than 500 chars of body content")
 	}
 }
 

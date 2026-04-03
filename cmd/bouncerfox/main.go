@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
+	"log"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -123,10 +126,13 @@ func newScanCmd() *cobra.Command {
 				fmt.Fprintln(os.Stderr, "note: connected mode is coming soon — running in offline mode")
 			}
 
-			// Validate HTTPS for connected mode.
+			// Connected mode: create platform client with HTTPS + domain validation.
+			var pc *platform.HTTPClient
 			if connected {
-				if err := platform.ValidateHTTPS(platformURL); err != nil {
-					return err
+				var clientErr error
+				pc, clientErr = platform.NewHTTPClient(platformURL, apiKey)
+				if clientErr != nil {
+					return clientErr
 				}
 			}
 
@@ -146,10 +152,6 @@ func newScanCmd() *cobra.Command {
 			// Connected mode: pull config from platform (before scan, after local config load).
 			var configHash string
 			var platformRulesVersion string
-			var pc *platform.HTTPClient
-			if connected {
-				pc = platform.NewHTTPClient(platformURL, apiKey)
-			}
 			if connected && !dryRunUpload {
 				cache := platform.NewConfigCache(platform.DefaultCacheDir())
 				skipCache := noCacheFlag || tgt.Trigger == "ci"
@@ -264,11 +266,17 @@ func newScanCmd() *cobra.Command {
 						return nil
 					}
 
-					// Check ignore patterns from config.
+					// Check ignore patterns from config against both original and resolved paths.
 					relPath, _ := filepath.Rel(absRoot, path)
+					relReal, _ := filepath.Rel(absRoot, absReal)
 					for _, pattern := range cfg.Ignore {
 						if pathutil.MatchGlob(pattern, filepath.Base(path)) || pathutil.MatchGlob(pattern, relPath) {
 							return nil
+						}
+						if relReal != relPath {
+							if pathutil.MatchGlob(pattern, filepath.Base(absReal)) || pathutil.MatchGlob(pattern, relReal) {
+								return nil
+							}
 						}
 					}
 
@@ -405,7 +413,7 @@ func newScanCmd() *cobra.Command {
 				if token == "" {
 					fmt.Fprintln(os.Stderr, "warning: --github-comment requires GITHUB_TOKEN env var")
 				} else {
-					owner, repo, err := gh.DetectRepoInfo()
+					owner, repo, err := gh.DetectRepoInfo(ctx)
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "warning: could not detect repo info: %v\n", err)
 					} else {
@@ -587,7 +595,9 @@ func hashString(s string) string {
 // uuidV4 generates a random UUID v4 string without external dependencies.
 func uuidV4() string {
 	var b [16]byte
-	_, _ = rand.Read(b[:])
+	if _, err := rand.Read(b[:]); err != nil {
+		log.Fatalf("crypto/rand.Read failed: %v", err)
+	}
 	b[6] = (b[6] & 0x0f) | 0x40 // version 4
 	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
 	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
@@ -600,12 +610,16 @@ func binaryChecksum() string {
 	if err != nil {
 		return ""
 	}
-	data, err := os.ReadFile(exe) //nolint:gosec // G304: reading symlink target for validation
+	f, err := os.Open(exe) //nolint:gosec // G304: reading own binary for checksum
 	if err != nil {
 		return ""
 	}
-	h := sha256.Sum256(data)
-	return hex.EncodeToString(h[:])
+	defer func() { _ = f.Close() }()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // newRulesCmd returns the `bouncerfox rules` subcommand.
@@ -696,6 +710,10 @@ func newAuthCmd() *cobra.Command {
 			platformURL := auth.PlatformURL()
 			webURL := strings.Replace(platformURL, "api.", "app.", 1) + "/auth/cli"
 
+			if err := validateBrowserURL(webURL); err != nil {
+				return fmt.Errorf("unsafe auth URL: %w", err)
+			}
+
 			fmt.Fprintf(os.Stderr, "Opening browser to %s...\n", webURL)
 			_ = openBrowser(webURL)
 
@@ -718,6 +736,35 @@ func newAuthCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// validateBrowserURL checks that a URL is safe to open in the user's browser.
+// Allows HTTPS on known BouncerFox domains and HTTP on localhost.
+func validateBrowserURL(rawURL string) error {
+	u, err := neturl.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL %q: %w", rawURL, err)
+	}
+	host := u.Hostname()
+	isLocal := host == "localhost" || host == "127.0.0.1"
+
+	if u.Scheme != "https" && !isLocal {
+		return fmt.Errorf("URL must use HTTPS (got %q)", rawURL)
+	}
+
+	if !isLocal {
+		allowed := false
+		for _, d := range []string{"app.bouncerfox.dev", "api.bouncerfox.dev"} {
+			if host == d {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("URL domain %q is not trusted", host)
+		}
+	}
+	return nil
 }
 
 // openBrowser opens the given URL in the system browser (best-effort).

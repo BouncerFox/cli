@@ -1,14 +1,20 @@
 # BouncerFox CLI Demo
 # Generate with: vhs demo/demo.tape
 
+Require bouncerfox
+
 Output demo/demo.gif
 
 Set Shell "bash"
-Set FontSize 14
+Set FontSize 16
 Set Width 1200
 Set Height 800
 Set Padding 20
 Set Theme "Catppuccin Mocha"
+Set WindowBar "Colorful"
+Set BorderRadius 8
+Set LoopOffset 60%
+Set PlaybackSpeed 1
 Set TypingSpeed 40ms
 
 Sleep 500ms
@@ -19,9 +25,7 @@ Sleep 1s
 
 Type "bouncerfox scan demo/compact/"
 Enter
-Sleep 4s
-
-Sleep 2s
+Sleep 6s
 
 Type "clear"
 Enter
@@ -33,9 +37,7 @@ Sleep 1s
 
 Type "bouncerfox scan demo/compact/ --group-by severity"
 Enter
-Sleep 4s
-
-Sleep 2s
+Sleep 6s
 
 Type "clear"
 Enter
@@ -47,6 +49,4 @@ Sleep 1s
 
 Type "bouncerfox scan demo/compact/ -v 2>/dev/null | head -25"
 Enter
-Sleep 4s
-
-Sleep 2s
+Sleep 6s

@@ -1,4 +1,4 @@
 profile: all_rules
 rules:
-  SEC_002:
+  QA_002:
     enabled: false

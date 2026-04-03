@@ -4,6 +4,7 @@ package custom
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"strings"
 
@@ -416,7 +417,11 @@ func compileCollectionAny(cfg map[string]any, ctx *ruleCtx) (CheckFn, error) {
 			return nil, fmt.Errorf("collection_any: missing 'match' or 'condition'")
 		}
 	}
-	compiledRe := precompileConditionRegex(condition)
+	compiledRe, err := precompileConditionRegex(condition)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: custom rule condition regex failed to compile: %v\n", err)
+		return nil, fmt.Errorf("collection_any: %w", err)
+	}
 
 	return func(doc *document.ConfigDocument) []document.ScanFinding {
 		coll := resolveFieldPath(doc.Parsed, path)
@@ -441,7 +446,11 @@ func compileCollectionNone(cfg map[string]any, ctx *ruleCtx) (CheckFn, error) {
 			return nil, fmt.Errorf("collection_none: missing 'match' or 'condition'")
 		}
 	}
-	compiledRe := precompileConditionRegex(condition)
+	compiledRe, err := precompileConditionRegex(condition)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: custom rule condition regex failed to compile: %v\n", err)
+		return nil, fmt.Errorf("collection_none: %w", err)
+	}
 
 	return func(doc *document.ConfigDocument) []document.ScanFinding {
 		coll := resolveFieldPath(doc.Parsed, path)
@@ -653,14 +662,15 @@ func iterateCollection(coll any) []kvPair {
 	return pairs
 }
 
-func precompileConditionRegex(condition map[string]any) *regexp.Regexp {
+func precompileConditionRegex(condition map[string]any) (*regexp.Regexp, error) {
 	if pat, ok := condition["matches"].(string); ok {
 		re, err := compileRegex(pat)
-		if err == nil {
-			return re
+		if err != nil {
+			return nil, fmt.Errorf("condition regex: %w", err)
 		}
+		return re, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func evalCondition(condition map[string]any, item, key any, compiledRe *regexp.Regexp) bool {

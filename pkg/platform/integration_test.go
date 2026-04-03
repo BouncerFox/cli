@@ -54,7 +54,7 @@ func TestConnectedFlow_PassVerdict(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewHTTPClient(srv.URL, "bf_test_key")
+	c := mustNewHTTPClient(t, srv.URL, "bf_test_key")
 
 	// Step 1: Pull config
 	cfgResp, err := c.PullConfig(context.Background(), PullConfigRequest{Target: "github:test/repo"})
@@ -101,7 +101,7 @@ func TestConnectedFlow_FailVerdict(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewHTTPClient(srv.URL, "bf_test")
+	c := mustNewHTTPClient(t, srv.URL, "bf_test")
 	verdict, err := c.Upload(context.Background(), UploadRequest{
 		Version: "1.0",
 		Trigger: "ci",
@@ -139,7 +139,7 @@ func TestConnectedFlow_ConfigCacheIntegration(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewHTTPClient(srv.URL, "bf_test")
+	c := mustNewHTTPClient(t, srv.URL, "bf_test")
 	cache := NewConfigCache(t.TempDir())
 	key := "test-cache-key"
 
@@ -174,7 +174,7 @@ func TestConnectedFlow_UploadPayloadNeverLeaksSecrets(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewHTTPClient(srv.URL, "bf_test")
+	c := mustNewHTTPClient(t, srv.URL, "bf_test")
 	_, err := c.Upload(context.Background(), UploadRequest{
 		Version: "1.0",
 		Trigger: "local",
@@ -220,7 +220,7 @@ func TestConnectedFlow_AnonymousOmitsIdentifyingInfo(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewHTTPClient(srv.URL, "bf_test")
+	c := mustNewHTTPClient(t, srv.URL, "bf_test")
 	// Simulate anonymous mode: omit target, commit, branch
 	_, _ = c.Upload(context.Background(), UploadRequest{
 		Version: "1.0",

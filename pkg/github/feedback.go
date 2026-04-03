@@ -8,12 +8,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/bouncerfox/cli/pkg/document"
 )
+
+// validRepoComponent matches valid GitHub owner and repo name characters.
+var validRepoComponent = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 
 // baseURL is the GitHub API base URL. It can be overridden in tests.
 var baseURL = "https://api.github.com"
@@ -65,7 +70,13 @@ func DetectPRNumber(flagValue int) (int, error) {
 		return 0, nil
 	}
 
-	data, err := os.ReadFile(eventPath) //nolint:gosec // G304: reading GitHub event file from env
+	f, err := os.Open(eventPath) //nolint:gosec // G304: reading GitHub event file from env
+	if err != nil {
+		return 0, fmt.Errorf("reading GITHUB_EVENT_PATH %q: %w", eventPath, err)
+	}
+	defer func() { _ = f.Close() }()
+
+	data, err := io.ReadAll(io.LimitReader(f, 1024*1024))
 	if err != nil {
 		return 0, fmt.Errorf("reading GITHUB_EVENT_PATH %q: %w", eventPath, err)
 	}
@@ -92,17 +103,20 @@ func DetectPRNumber(flagValue int) (int, error) {
 
 // DetectRepoInfo returns the owner and repo name from the GITHUB_REPOSITORY
 // environment variable ("owner/repo") or from the git remote URL.
-func DetectRepoInfo() (owner, repo string, err error) {
+func DetectRepoInfo(ctx context.Context) (owner, repo string, err error) {
 	if v := os.Getenv("GITHUB_REPOSITORY"); v != "" {
 		parts := strings.SplitN(v, "/", 2)
 		if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			if !validRepoComponent.MatchString(parts[0]) || !validRepoComponent.MatchString(parts[1]) {
+				return "", "", fmt.Errorf("invalid GITHUB_REPOSITORY %q: owner and repo must contain only alphanumeric, dot, hyphen, or underscore characters", v)
+			}
 			return parts[0], parts[1], nil
 		}
 		return "", "", fmt.Errorf("malformed GITHUB_REPOSITORY %q: expected owner/repo", v)
 	}
 
 	// Fall back to parsing git remote.
-	remote, err := gitRemoteURL()
+	remote, err := gitRemoteURL(ctx)
 	if err != nil {
 		return "", "", fmt.Errorf("cannot detect repo info: GITHUB_REPOSITORY unset and git remote unavailable: %w", err)
 	}
@@ -148,7 +162,7 @@ func PostCheckRun(ctx context.Context, opts CheckRunOptions) error {
 	}
 
 	respData, err := doRequest(ctx, http.MethodPost,
-		fmt.Sprintf("%s/repos/%s/%s/check-runs", baseURL, opts.Owner, opts.Repo),
+		fmt.Sprintf("%s/repos/%s/%s/check-runs", baseURL, url.PathEscape(opts.Owner), url.PathEscape(opts.Repo)),
 		opts.Token, createBody)
 	if err != nil {
 		return fmt.Errorf("creating check run: %w", err)
@@ -182,7 +196,7 @@ func PostCheckRun(ctx context.Context, opts CheckRunOptions) error {
 			},
 		}
 		_, err := doRequest(ctx, http.MethodPatch,
-			fmt.Sprintf("%s/repos/%s/%s/check-runs/%d", baseURL, opts.Owner, opts.Repo, created.ID),
+			fmt.Sprintf("%s/repos/%s/%s/check-runs/%d", baseURL, url.PathEscape(opts.Owner), url.PathEscape(opts.Repo), created.ID),
 			opts.Token, patchBody)
 		if err != nil {
 			return fmt.Errorf("updating check run annotations: %w", err)
@@ -205,7 +219,7 @@ func PostPRComment(ctx context.Context, opts CommentOptions) error {
 
 	if existingID > 0 {
 		_, err = doRequest(ctx, http.MethodPatch,
-			fmt.Sprintf("%s/repos/%s/%s/issues/comments/%d", baseURL, opts.Owner, opts.Repo, existingID),
+			fmt.Sprintf("%s/repos/%s/%s/issues/comments/%d", baseURL, url.PathEscape(opts.Owner), url.PathEscape(opts.Repo), existingID),
 			opts.Token, map[string]string{"body": body})
 		if err != nil {
 			return fmt.Errorf("updating PR comment: %w", err)
@@ -214,7 +228,7 @@ func PostPRComment(ctx context.Context, opts CommentOptions) error {
 	}
 
 	_, err = doRequest(ctx, http.MethodPost,
-		fmt.Sprintf("%s/repos/%s/%s/issues/%d/comments", baseURL, opts.Owner, opts.Repo, opts.PRNumber),
+		fmt.Sprintf("%s/repos/%s/%s/issues/%d/comments", baseURL, url.PathEscape(opts.Owner), url.PathEscape(opts.Repo), opts.PRNumber),
 		opts.Token, map[string]string{"body": body})
 	if err != nil {
 		return fmt.Errorf("posting PR comment: %w", err)
@@ -253,7 +267,7 @@ type checkRunUpdateRequest struct {
 }
 
 // doRequest performs an authenticated JSON request and returns the response body.
-func doRequest(ctx context.Context, method, url, token string, body any) ([]byte, error) {
+func doRequest(ctx context.Context, method, reqURL, token string, body any) ([]byte, error) {
 	var buf io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -263,7 +277,7 @@ func doRequest(ctx context.Context, method, url, token string, body any) ([]byte
 		buf = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, buf)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, buf)
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)
 	}
@@ -281,13 +295,21 @@ func doRequest(ctx context.Context, method, url, token string, body any) ([]byte
 	defer func() { _ = resp.Body.Close() }()
 
 	data, readErr := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("GitHub API %s %s returned %d: %s", method, url, resp.StatusCode, string(data))
-	}
 	if readErr != nil {
 		return nil, fmt.Errorf("reading response body: %w", readErr)
 	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("GitHub API %s %s returned %d: %s", method, reqURL, resp.StatusCode, string(truncateBytes(data, 500)))
+	}
 	return data, nil
+}
+
+// truncateBytes returns data trimmed to maxLen bytes.
+func truncateBytes(data []byte, maxLen int) []byte {
+	if len(data) <= maxLen {
+		return data
+	}
+	return data[:maxLen]
 }
 
 // DeriveConclusion maps finding severities to a GitHub check conclusion.
@@ -392,8 +414,8 @@ func buildCommentBody(findings []document.ScanFinding) string {
 		}
 		fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s |\n",
 			string(f.Severity),
-			f.RuleID,
-			file,
+			escapeMarkdown(f.RuleID),
+			escapeMarkdown(file),
 			lineStr,
 			escapeMarkdown(f.Message),
 		)
@@ -402,16 +424,23 @@ func buildCommentBody(findings []document.ScanFinding) string {
 	return sb.String()
 }
 
-// escapeMarkdown escapes pipe characters so they don't break Markdown tables.
+// escapeMarkdown escapes characters that could be used for markdown injection
+// in PR comments (pipes, links, and HTML tags).
 func escapeMarkdown(s string) string {
-	return strings.ReplaceAll(s, "|", "\\|")
+	s = strings.ReplaceAll(s, "&", "&amp;") // must be first to avoid double-escaping
+	s = strings.ReplaceAll(s, "|", "\\|")
+	s = strings.ReplaceAll(s, "[", "\\[")
+	s = strings.ReplaceAll(s, "]", "\\]")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	return s
 }
 
 // findExistingComment searches for a PR comment containing commentMarker and
 // returns its ID, or 0 if not found.
 func findExistingComment(ctx context.Context, opts CommentOptions) (int64, error) {
 	reqURL := fmt.Sprintf("%s/repos/%s/%s/issues/%d/comments?per_page=100",
-		baseURL, opts.Owner, opts.Repo, opts.PRNumber)
+		baseURL, url.PathEscape(opts.Owner), url.PathEscape(opts.Repo), opts.PRNumber)
 
 	data, err := doRequest(ctx, http.MethodGet, reqURL, opts.Token, nil)
 	if err != nil {
@@ -507,8 +536,6 @@ func parseGitRemote(remote string) (owner, repo string, err error) {
 }
 
 // gitRemoteURL returns the URL of the "origin" remote by running git.
-func gitRemoteURL() (string, error) {
-	// We use os/exec to avoid an external dependency.
-	// Import lazily inside the function to keep the import block clean.
-	return runGitRemote()
+func gitRemoteURL(ctx context.Context) (string, error) {
+	return runGitRemote(ctx)
 }

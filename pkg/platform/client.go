@@ -102,14 +102,50 @@ type HTTPClient struct {
 	httpClient *http.Client
 }
 
-// NewHTTPClient creates a platform HTTP client.
-// Accepts http:// for testing; ValidateHTTPS should be called at CLI entry point.
-func NewHTTPClient(baseURL, apiKey string) *HTTPClient {
+// AllowedDomains is the set of permitted BouncerFox hostnames.
+// Used by both platform client construction and browser URL validation.
+var AllowedDomains = []string{"api.bouncerfox.dev", "app.bouncerfox.dev"}
+
+// ValidateURL checks that a URL uses HTTPS and targets an allowed domain.
+// Localhost and 127.0.0.1 are exempt for development/testing.
+func ValidateURL(rawURL string) error {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL %q: %w", rawURL, err)
+	}
+	host := u.Hostname()
+	isLocal := host == "localhost" || host == "127.0.0.1"
+
+	if u.Scheme != "https" && !isLocal {
+		return fmt.Errorf("URL must use HTTPS (got %q)", rawURL)
+	}
+
+	if !isLocal {
+		allowed := false
+		for _, d := range AllowedDomains {
+			if host == d {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return fmt.Errorf("URL domain %q is not in the allowed list", host)
+		}
+	}
+	return nil
+}
+
+// NewHTTPClient creates a platform HTTP client with HTTPS and domain validation.
+// Localhost and 127.0.0.1 are exempt for development/testing.
+func NewHTTPClient(baseURL, apiKey string) (*HTTPClient, error) {
+	if err := ValidateURL(baseURL); err != nil {
+		return nil, err
+	}
 	return &HTTPClient{
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		apiKey:     apiKey,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
-	}
+	}, nil
 }
 
 // ValidateHTTPS returns an error if the URL does not use HTTPS.
@@ -155,7 +191,10 @@ func (c *HTTPClient) Upload(ctx context.Context, req UploadRequest) (*VerdictRes
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	if readErr != nil {
+		return nil, fmt.Errorf("reading upload response: %w", readErr)
+	}
 	if resp.StatusCode == 409 {
 		return nil, &SupersededError{Message: string(body)}
 	}

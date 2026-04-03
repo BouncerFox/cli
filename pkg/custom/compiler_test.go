@@ -997,3 +997,69 @@ func TestCompile_RegexSizeLimit(t *testing.T) {
 		t.Error("expected error for oversized regex pattern")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Condition regex error surfacing (R10)
+// ---------------------------------------------------------------------------
+
+func TestConditionRegex_ValidCompiles(t *testing.T) {
+	rule := makeRule("CR001", "warn", map[string]any{
+		"type":  "collection_any",
+		"field": "items",
+		"match": map[string]any{"matches": `^https://`},
+	})
+	fn := mustCompile(t, rule)
+	d := doc("mcp_json", "", map[string]any{
+		"items": []any{"https://example.com", "http://other.com"},
+	})
+	findings := fn(d)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+}
+
+func TestConditionRegex_InvalidReturnsError(t *testing.T) {
+	rule := makeRule("CR002", "warn", map[string]any{
+		"type":  "collection_any",
+		"field": "items",
+		"match": map[string]any{"matches": `[invalid`},
+	})
+	_, err := custom.Compile(rule)
+	if err == nil {
+		t.Fatal("expected error for invalid condition regex")
+	}
+	if !strings.Contains(err.Error(), "condition regex") {
+		t.Errorf("error should mention 'condition regex', got: %v", err)
+	}
+}
+
+func TestConditionRegex_InvalidInCollectionNone(t *testing.T) {
+	rule := makeRule("CR003", "warn", map[string]any{
+		"type":  "collection_none",
+		"field": "items",
+		"match": map[string]any{"matches": `[invalid`},
+	})
+	_, err := custom.Compile(rule)
+	if err == nil {
+		t.Fatal("expected error for invalid condition regex in collection_none")
+	}
+	if !strings.Contains(err.Error(), "collection_none") {
+		t.Errorf("error should mention 'collection_none', got: %v", err)
+	}
+}
+
+func TestConditionRegex_OversizedReturnsError(t *testing.T) {
+	hugePattern := strings.Repeat("a", 5000)
+	rule := makeRule("CR004", "warn", map[string]any{
+		"type":  "collection_any",
+		"field": "items",
+		"match": map[string]any{"matches": hugePattern},
+	})
+	_, err := custom.Compile(rule)
+	if err == nil {
+		t.Fatal("expected error for oversized condition regex")
+	}
+	if !strings.Contains(err.Error(), "maximum length") {
+		t.Errorf("error should mention 'maximum length', got: %v", err)
+	}
+}

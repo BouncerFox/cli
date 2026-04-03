@@ -198,8 +198,8 @@ func TestScan_BadSettings(t *testing.T) {
 
 func TestScan_ConfigOverride_DisablesRule(t *testing.T) {
 	stdout, _, _ := runBinary(t, []string{"scan", "testdata/config-override", "--config", "testdata/config-override/.bouncerfox.yml"})
-	if strings.Contains(stdout, "SEC_002") {
-		t.Error("SEC_002 should be disabled by config override")
+	if strings.Contains(stdout, "QA_002") {
+		t.Error("QA_002 should be disabled by config override")
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/bouncerfox/cli/pkg/document"
+	"github.com/bouncerfox/cli/pkg/fingerprint"
 	"github.com/bouncerfox/cli/pkg/parser"
 )
 
@@ -190,6 +191,56 @@ func TestSEC001_SpecificPatternWithEnvVar(t *testing.T) {
 	findings := CheckSEC001(doc, defaultRC())
 	if len(findings) != 1 {
 		t.Fatalf("got %d findings, want 1 (specific pattern should not be suppressed by env var)", len(findings))
+	}
+}
+
+func TestSEC001_EvidenceIncludesPattern(t *testing.T) {
+	key := "sk-ant-api03-" + strings.Repeat("A", 90)
+	doc := newClaudeMDDoc("Use this key: " + key)
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	pat, ok := findings[0].Evidence["pattern"].(string)
+	if !ok || pat == "" {
+		t.Fatal("evidence should contain non-empty 'pattern' field")
+	}
+	if pat != "anthropic_api_key" {
+		t.Errorf("pattern = %q, want %q", pat, "anthropic_api_key")
+	}
+}
+
+func TestSEC001_DifferentPatternsDifferentFingerprints(t *testing.T) {
+	// Two secrets on different lines matched by different patterns should
+	// produce different fingerprints (not collapse into one finding).
+	stripeKey := "sk_live_" + strings.Repeat("a", 24)
+	awsKey := "AKIA" + strings.Repeat("A", 16)
+	doc := newClaudeMDDoc(stripeKey + "\n" + awsKey)
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 2 {
+		t.Fatalf("got %d findings, want 2", len(findings))
+	}
+	fp1 := fingerprint.ComputeFingerprint(findings[0])
+	fp2 := fingerprint.ComputeFingerprint(findings[1])
+	if fp1 == fp2 {
+		t.Error("different secret patterns on same file should produce different fingerprints")
+	}
+}
+
+func TestSEC001_SamePatternDifferentLinesSameFingerprint(t *testing.T) {
+	// Two secrets matched by the same pattern on different lines should
+	// produce the same fingerprint (same pattern = same finding class).
+	key1 := "AKIA" + strings.Repeat("A", 16)
+	key2 := "AKIA" + strings.Repeat("B", 16)
+	doc := newClaudeMDDoc(key1 + "\n" + key2)
+	findings := CheckSEC001(doc, defaultRC())
+	if len(findings) != 2 {
+		t.Fatalf("got %d findings, want 2", len(findings))
+	}
+	fp1 := fingerprint.ComputeFingerprint(findings[0])
+	fp2 := fingerprint.ComputeFingerprint(findings[1])
+	if fp1 != fp2 {
+		t.Error("same pattern on different lines should produce same fingerprint (positional)")
 	}
 }
 

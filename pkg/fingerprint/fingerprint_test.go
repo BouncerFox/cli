@@ -238,6 +238,66 @@ func TestComputeFingerprint_IncludesFilePath(t *testing.T) {
 	}
 }
 
+func TestComputeFingerprint_SEC001PatternFieldProducesUniqueFingerprints(t *testing.T) {
+	// SEC_001 sets snippet="" so two findings on the same file would collide
+	// without the "pattern" evidence field providing differentiation.
+	f1 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Severity: document.SeverityCritical,
+		Evidence: map[string]any{
+			"file":    "CLAUDE.md",
+			"line":    5,
+			"snippet": "",
+			"pattern": "stripe_key",
+		},
+	}
+	f2 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Severity: document.SeverityCritical,
+		Evidence: map[string]any{
+			"file":    "CLAUDE.md",
+			"line":    10,
+			"snippet": "",
+			"pattern": "aws_access_key",
+		},
+	}
+	fp1 := fingerprint.ComputeFingerprint(f1)
+	fp2 := fingerprint.ComputeFingerprint(f2)
+	if fp1 == fp2 {
+		t.Error("SEC_001 findings with different pattern names should have different fingerprints")
+	}
+}
+
+func TestComputeFingerprint_SEC001SamePatternSameFingerprint(t *testing.T) {
+	// Same pattern on different lines should produce the same fingerprint
+	// because line is positional and excluded.
+	f1 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Severity: document.SeverityCritical,
+		Evidence: map[string]any{
+			"file":    "CLAUDE.md",
+			"line":    5,
+			"snippet": "",
+			"pattern": "aws_access_key",
+		},
+	}
+	f2 := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Severity: document.SeverityCritical,
+		Evidence: map[string]any{
+			"file":    "CLAUDE.md",
+			"line":    99,
+			"snippet": "",
+			"pattern": "aws_access_key",
+		},
+	}
+	fp1 := fingerprint.ComputeFingerprint(f1)
+	fp2 := fingerprint.ComputeFingerprint(f2)
+	if fp1 != fp2 {
+		t.Error("SEC_001 findings with same pattern on different lines should have same fingerprint")
+	}
+}
+
 func TestComputeFingerprint_SameFileProducesSameFingerprint(t *testing.T) {
 	f1 := document.ScanFinding{
 		RuleID:   "SEC_001",

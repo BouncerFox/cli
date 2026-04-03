@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Info holds the detected scan target identity.
@@ -43,7 +44,7 @@ func Detect(opts DetectOptions) Info {
 	} else if opts.ConfigTarget != "" {
 		info.ID = opts.ConfigTarget
 		info.Label = labelFromID(opts.ConfigTarget)
-	} else if slug := gitRemoteSlug(opts.ScanRoot); slug != "" {
+	} else if slug := gitRemoteSlug(context.Background(), opts.ScanRoot); slug != "" {
 		info.ID = "github:" + slug
 		info.Label = slug
 	} else {
@@ -57,12 +58,12 @@ func Detect(opts DetectOptions) Info {
 	if sha := os.Getenv("GITHUB_SHA"); sha != "" {
 		info.Commit = sha
 	} else {
-		info.Commit = gitOutput(opts.ScanRoot, "rev-parse", "HEAD")
+		info.Commit = gitOutput(context.Background(), opts.ScanRoot, "rev-parse", "HEAD")
 	}
 	if ref := os.Getenv("GITHUB_REF_NAME"); ref != "" {
 		info.Branch = ref
 	} else {
-		info.Branch = gitOutput(opts.ScanRoot, "branch", "--show-current")
+		info.Branch = gitOutput(context.Background(), opts.ScanRoot, "branch", "--show-current")
 	}
 
 	return info
@@ -85,8 +86,8 @@ func labelFromID(id string) string {
 	return id
 }
 
-func gitRemoteSlug(dir string) string {
-	out := gitOutput(dir, "remote", "get-url", "origin")
+func gitRemoteSlug(ctx context.Context, dir string) string {
+	out := gitOutput(ctx, dir, "remote", "get-url", "origin")
 	if out == "" {
 		return ""
 	}
@@ -111,8 +112,10 @@ func parseGitRemoteSlug(remote string) string {
 	return ""
 }
 
-func gitOutput(dir string, args ...string) string {
-	cmd := exec.CommandContext(context.Background(), "git", args...) //nolint:gosec // G204: git command with safe args
+func gitOutput(ctx context.Context, dir string, args ...string) string {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...) //nolint:gosec // G204: git command with safe args
 	cmd.Dir = dir
 	out, err := cmd.Output()
 	if err != nil {

@@ -78,6 +78,25 @@ func locationKey(filePath string, line any) string {
 	return filePath + ":" + fmt.Sprint(line)
 }
 
+// safeCheck wraps a check function with panic recovery. If the check panics,
+// a synthetic warning finding is returned instead of crashing.
+func safeCheck(ruleID, filePath string, checkFn func() []document.ScanFinding) (findings []document.ScanFinding, panicked bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			findings = []document.ScanFinding{{
+				RuleID:   ruleID,
+				Severity: document.SeverityWarn,
+				Message:  fmt.Sprintf("rule failed to execute (panic recovered: %v)", r),
+				Evidence: map[string]any{
+					"file": filePath,
+				},
+			}}
+			panicked = true
+		}
+	}()
+	return checkFn(), false
+}
+
 // Scan runs all applicable rules from rules.Registry against each document in
 // docs, then applies rule-to-rule suppression, severity overrides, severity
 // floor, deduplication, and caps.
@@ -134,7 +153,7 @@ func Scan(ctx context.Context, docs []*document.ConfigDocument, opts ScanOptions
 			}
 
 			rulesRunSet[rule.ID] = true
-			findings := rule.Check(doc, rc)
+			findings, _ := safeCheck(rule.ID, doc.FilePath, func() []document.ScanFinding { return rule.Check(doc, rc) })
 
 			for _, f := range findings {
 				// Apply severity override if configured.
@@ -172,7 +191,7 @@ func Scan(ctx context.Context, docs []*document.ConfigDocument, opts ScanOptions
 			}
 
 			rulesRunSet[cc.RuleID] = true
-			findings := cc.Check(doc)
+			findings, _ := safeCheck(cc.RuleID, doc.FilePath, func() []document.ScanFinding { return cc.Check(doc) })
 
 			for _, f := range findings {
 				if sev, ok := opts.SeverityOverrides[f.RuleID]; ok {

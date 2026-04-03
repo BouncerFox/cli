@@ -80,7 +80,7 @@ func locationKey(filePath string, line any) string {
 
 // safeCheck wraps a check function with panic recovery. If the check panics,
 // a synthetic warning finding is returned instead of crashing.
-func safeCheck(ruleID string, filePath string, checkFn func() []document.ScanFinding) (findings []document.ScanFinding, panicked bool) {
+func safeCheck(ruleID, filePath string, checkFn func() []document.ScanFinding) (findings []document.ScanFinding, panicked bool) {
 	defer func() {
 		if r := recover(); r != nil {
 			findings = []document.ScanFinding{{

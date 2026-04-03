@@ -267,7 +267,7 @@ type checkRunUpdateRequest struct {
 }
 
 // doRequest performs an authenticated JSON request and returns the response body.
-func doRequest(ctx context.Context, method, url, token string, body any) ([]byte, error) {
+func doRequest(ctx context.Context, method, reqURL, token string, body any) ([]byte, error) {
 	var buf io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -277,7 +277,7 @@ func doRequest(ctx context.Context, method, url, token string, body any) ([]byte
 		buf = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, buf)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, buf)
 	if err != nil {
 		return nil, fmt.Errorf("building request: %w", err)
 	}
@@ -299,7 +299,7 @@ func doRequest(ctx context.Context, method, url, token string, body any) ([]byte
 		return nil, fmt.Errorf("reading response body: %w", readErr)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("GitHub API %s %s returned %d: %s", method, url, resp.StatusCode, string(truncateBytes(data, 500)))
+		return nil, fmt.Errorf("GitHub API %s %s returned %d: %s", method, reqURL, resp.StatusCode, string(truncateBytes(data, 500)))
 	}
 	return data, nil
 }

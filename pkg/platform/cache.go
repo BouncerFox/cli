@@ -22,7 +22,7 @@ type CacheEntry struct {
 
 func NewConfigCache(dir string) *ConfigCache {
 	_ = os.MkdirAll(dir, 0o700)
-	_ = os.Chmod(dir, 0o700) // enforce permissions even on existing dirs
+	_ = os.Chmod(dir, 0o700) //nolint:gosec // G302: 0700 is intentional for directory (not file)
 	return &ConfigCache{Dir: dir, TTL: 60 * time.Second}
 }
 

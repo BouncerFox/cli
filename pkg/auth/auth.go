@@ -23,7 +23,7 @@ func ResolveAPIKey() string {
 		return key
 	}
 	path := credentialsPath()
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G304: path is derived from known config directory, not user input
 	if err != nil {
 		return ""
 	}

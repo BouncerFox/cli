@@ -86,6 +86,7 @@ func ExtractSkillMetadata(docs []*document.ConfigDocument) []platform.SkillMetad
 			Description: stringFromMap(fm, "description"),
 			Status:      stringFromMap(fm, "status"),
 			Model:       stringFromMap(fm, "model"),
+			ContentHash: doc.ContentHash,
 		})
 	}
 	return skills

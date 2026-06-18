@@ -1,0 +1,4 @@
+{
+  "error": "unauthorized",
+  "message": "API key is missing or invalid."
+}

@@ -1,0 +1,8 @@
+{
+  "file": ".claude/skills/reviewer/SKILL.md",
+  "name": "reviewer",
+  "description": "Review code changes",
+  "status": "stable",
+  "model": "gpt-5",
+  "content_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+}

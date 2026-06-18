@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "cli_version": "0.9.0",
+  "target": "local:/Users/example/project",
+  "target_label": "project",
+  "commit_sha": "",
+  "branch": "",
+  "trigger": "local",
+  "timestamp": "2026-06-19T12:15:00Z",
+  "duration_ms": 180,
+  "total_files": 4,
+  "scanned_files": 2,
+  "profile": "recommended",
+  "config_hash": "3333333333333333333333333333333333333333333333333333333333333333",
+  "findings": [
+    {
+      "rule_id": "QA_001",
+      "severity": "warn",
+      "message": "Missing description",
+      "file": ".claude/skills/local/SKILL.md",
+      "line": 2,
+      "fingerprint": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "remediation": "Add a non-empty description."
+    }
+  ]
+}

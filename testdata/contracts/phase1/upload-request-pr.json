@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "cli_version": "0.9.0",
+  "target": "github:acme/repo",
+  "target_label": "acme/repo",
+  "commit_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "branch": "pull/42/head",
+  "trigger": "ci",
+  "timestamp": "2026-06-19T12:10:00Z",
+  "duration_ms": 530,
+  "total_files": 20,
+  "scanned_files": 5,
+  "profile": "recommended",
+  "config_hash": "2222222222222222222222222222222222222222222222222222222222222222",
+  "findings": [],
+  "pr_number": 42,
+  "skills": [
+    {
+      "file": ".claude/skills/reviewer/SKILL.md",
+      "name": "reviewer",
+      "description": "Review code changes",
+      "status": "stable",
+      "model": "gpt-5",
+      "content_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}

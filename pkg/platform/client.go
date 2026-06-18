@@ -41,6 +41,7 @@ type SkillMetadata struct {
 	Description string `json:"description,omitempty"`
 	Status      string `json:"status,omitempty"`
 	Model       string `json:"model,omitempty"`
+	ContentHash string `json:"content_hash,omitempty"`
 }
 
 // UploadRequest is the full upload payload.

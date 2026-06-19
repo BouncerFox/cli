@@ -284,6 +284,7 @@ func TestFormatTable_UnknownFileInSeverityMode(t *testing.T) {
 }
 
 func TestFormatTable_SeverityColoredSummary(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
 	findings := []document.ScanFinding{
 		{RuleID: "SEC_001", Severity: "critical", Message: "test",
 			Evidence: map[string]any{"file": "f.md", "line": 1}},
@@ -305,6 +306,7 @@ func TestFormatTable_SeverityColoredSummary(t *testing.T) {
 }
 
 func TestFormatTable_SeverityColoredSummary_NoColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
 	findings := []document.ScanFinding{
 		{RuleID: "SEC_001", Severity: "critical", Message: "test",
 			Evidence: map[string]any{"file": "f.md", "line": 1}},

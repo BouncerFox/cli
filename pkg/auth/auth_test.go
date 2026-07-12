@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -60,7 +61,7 @@ func TestPlatformURL_EnvOverride(t *testing.T) {
 	}
 }
 
-func TestResolveAPIKey_CredentialsFile0644WarnsPermissions(t *testing.T) {
+func TestResolveAPIKey_CredentialsFilePermissionWarning(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("BOUNCERFOX_CONFIG_DIR", dir)
 	os.Unsetenv("BOUNCERFOX_API_KEY")
@@ -86,7 +87,12 @@ func TestResolveAPIKey_CredentialsFile0644WarnsPermissions(t *testing.T) {
 	if key != "bf_test_key" {
 		t.Errorf("expected key 'bf_test_key', got %q", key)
 	}
-	if !bytes.Contains(buf.Bytes(), []byte("overly broad permissions")) {
+	warned := bytes.Contains(buf.Bytes(), []byte("overly broad permissions"))
+	if runtime.GOOS == "windows" {
+		if warned {
+			t.Error("did not expect a Unix mode-bit warning on Windows")
+		}
+	} else if !warned {
 		t.Error("expected warning about overly broad permissions on stderr")
 	}
 }

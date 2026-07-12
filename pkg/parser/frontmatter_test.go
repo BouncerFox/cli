@@ -129,7 +129,7 @@ func TestParseFrontmatterMD_BinaryContent(t *testing.T) {
 }
 
 func TestParseFrontmatterMD_OversizedContent(t *testing.T) {
-	huge := "---\nname: test\n---\n" + strings.Repeat("A", 600*1024)
+	huge := "---\nname: test\n---\n" + strings.Repeat("A", MaxContentSize)
 	doc := ParseFrontmatterMD("skill_md", "SKILL.md", huge)
 	if doc.Parsed["_parse_error"] != true {
 		t.Error("expected parse error for oversized content")
@@ -137,6 +137,13 @@ func TestParseFrontmatterMD_OversizedContent(t *testing.T) {
 	reason, _ := doc.Parsed["_reason"].(string)
 	if reason != "content_too_large" {
 		t.Errorf("expected reason content_too_large, got %q", reason)
+	}
+}
+
+func TestParseClaudeMD_ContentAtLimit(t *testing.T) {
+	doc := ParseClaudeMD("CLAUDE.md", strings.Repeat("A", MaxContentSize))
+	if doc.Parsed["_parse_error"] == true {
+		t.Errorf("content at the 1 MB limit should be accepted: %v", doc.Parsed)
 	}
 }
 
@@ -159,6 +166,9 @@ func TestParseFrontmatterMD_MalformedYAML(t *testing.T) {
 	if doc.Parsed["_parse_error"] != true {
 		t.Error("expected parse error for malformed YAML")
 	}
+	if reason, _ := doc.Parsed["_reason"].(string); reason != "invalid_yaml" {
+		t.Errorf("_reason = %q, want invalid_yaml", reason)
+	}
 }
 
 func TestParseFrontmatterMD_YAMLMergeKey(t *testing.T) {
@@ -166,6 +176,80 @@ func TestParseFrontmatterMD_YAMLMergeKey(t *testing.T) {
 	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
 	if doc.Parsed["_parse_error"] != true {
 		t.Error("expected parse error for YAML merge key (uses anchors)")
+	}
+}
+
+func TestParseFrontmatterMD_RejectsAdversarialYAMLReferences(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		line int
+	}{
+		{
+			name: "sequence anchor and alias",
+			yaml: "items:\n  - &defaults\n    key: value\n  - *defaults",
+			line: 3,
+		},
+		{
+			name: "flow anchor and alias",
+			yaml: "items: [&item value, *item]",
+			line: 2,
+		},
+		{
+			name: "hyphenated anchor with merge alias",
+			yaml: "base-config: &base\n  key: value\nmerged:\n  <<: *base",
+			line: 2,
+		},
+		{
+			name: "merge key with inline mapping",
+			yaml: "merged:\n  <<: {key: value}",
+			line: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := "---\n" + tt.yaml + "\n---\nBody"
+			doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
+			if doc.Parsed["_parse_error"] != true {
+				t.Fatal("expected YAML reference to be rejected")
+			}
+			if reason, _ := doc.Parsed["_reason"].(string); reason != "yaml_anchors" {
+				t.Errorf("_reason = %q, want yaml_anchors", reason)
+			}
+			if line, _ := doc.Parsed["_rejection_line"].(int); line != tt.line {
+				t.Errorf("_rejection_line = %d, want %d", line, tt.line)
+			}
+		})
+	}
+}
+
+func TestParseFrontmatterMD_ReferenceParseErrorsUseSecurityReason(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{name: "undefined alias", yaml: "value: *missing"},
+		{name: "self-referential anchor", yaml: "value: &self\n  nested: *self"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := ParseFrontmatterMD("skill_md", "SKILL.md", "---\n"+tt.yaml+"\n---\nBody")
+			if doc.Parsed["_parse_error"] != true {
+				t.Fatal("expected YAML reference to be rejected")
+			}
+			if reason, _ := doc.Parsed["_reason"].(string); reason != RejectionReasonYAMLReferences {
+				t.Errorf("_reason = %q, want %q", reason, RejectionReasonYAMLReferences)
+			}
+		})
+	}
+}
+
+func TestParseFrontmatterMD_YAMLReferenceSyntaxInsideScalarIsAllowed(t *testing.T) {
+	content := "---\nname: example\n\"<<\": literal key\ndescription: |\n  key: &literal\n  alias: *literal\n---\nBody"
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
+	if doc.Parsed["_parse_error"] == true {
+		t.Errorf("reference-like scalar text must not be rejected: %v", doc.Parsed)
 	}
 }
 

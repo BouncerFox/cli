@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/bouncerfox/cli/pkg/document"
+	"github.com/bouncerfox/cli/pkg/fingerprint"
 )
 
 // sampleFindings provides a small set of findings used across tests.
@@ -43,6 +44,24 @@ func TestPayload_FindingShape(t *testing.T) {
 	}
 	if first.Line != 5 {
 		t.Errorf("expected line 5, got %d", first.Line)
+	}
+}
+
+func TestPayload_ComputesFindingFingerprint(t *testing.T) {
+	finding := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Severity: document.SeverityCritical,
+		Message:  "hardcoded secret",
+		Evidence: map[string]any{
+			"file":    "path/to/CLAUDE.md",
+			"line":    5,
+			"snippet": "token pattern",
+		},
+	}
+
+	wire := BuildWireFindings([]document.ScanFinding{finding}, false, false)
+	if got, want := wire[0].Fingerprint, fingerprint.ComputeFingerprint(finding); got != want {
+		t.Errorf("fingerprint = %q, want engine fingerprint %q", got, want)
 	}
 }
 

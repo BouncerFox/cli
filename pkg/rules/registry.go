@@ -186,10 +186,10 @@ var Registry = []document.RuleMetadata{
 	},
 	{
 		ID:               "SEC_019",
-		Name:             "YAML Anchor/Alias",
+		Name:             "YAML Reference/Merge Key",
 		Category:         "security",
-		Description:      "YAML anchor or alias in frontmatter — potential YAML bomb",
-		Remediation:      "Remove YAML anchors (&) and aliases (*) from frontmatter.",
+		Description:      "YAML anchor, alias, or merge key in frontmatter — potential YAML bomb",
+		Remediation:      "Remove YAML anchors (&), aliases (*), and merge keys (<<:) from frontmatter.",
 		DefaultSeverity:  document.SeverityHigh,
 		DefaultFileTypes: []string{document.FileTypeSkillMD, document.FileTypeAgentMD, document.FileTypeRulesMD},
 		Check:            CheckSEC019,

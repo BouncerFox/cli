@@ -114,10 +114,10 @@ func TestPhase1ConfigPullRequestFixture_DecodeStrictly(t *testing.T) {
 
 func TestPhase1VerdictFixtures_DecodeStrictly(t *testing.T) {
 	tests := []struct {
-		name        string
-		verdict     string
+		name         string
+		verdict      string
 		findingCount int
-		reasons     int
+		reasons      int
 	}{
 		{name: "upload-verdict-pass.json", verdict: "pass", findingCount: 0, reasons: 0},
 		{name: "upload-verdict-warn.json", verdict: "warn", findingCount: 1, reasons: 1},

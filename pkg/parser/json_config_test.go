@@ -69,6 +69,9 @@ func TestParseJSONConfig_InvalidJSON(t *testing.T) {
 	if !parseErr {
 		t.Error("expected _parse_error for invalid JSON")
 	}
+	if reason, _ := doc.Parsed["_reason"].(string); reason != "invalid_json" {
+		t.Errorf("_reason = %q, want invalid_json", reason)
+	}
 }
 
 func TestParseJSONConfig_BinaryContent(t *testing.T) {
@@ -81,7 +84,7 @@ func TestParseJSONConfig_BinaryContent(t *testing.T) {
 }
 
 func TestParseJSONConfig_TooLarge(t *testing.T) {
-	content := "{\"key\": \"" + strings.Repeat("x", 600*1024) + "\"}"
+	content := "{\"key\": \"" + strings.Repeat("x", MaxContentSize) + "\"}"
 	doc := ParseJSONConfig("settings_json", "settings.json", content)
 
 	parseErr, _ := doc.Parsed["_parse_error"].(bool)

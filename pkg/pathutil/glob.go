@@ -2,7 +2,7 @@
 package pathutil
 
 import (
-	"path/filepath"
+	"path"
 	"strings"
 )
 
@@ -14,6 +14,10 @@ const maxDoubleStars = 4
 // matching. Handles multiple ** segments. Falls back to filepath.Match for
 // patterns without **.
 func MatchGlob(pattern, name string) bool {
+	// Config globs use forward slashes on every platform. Normalize both
+	// operands so recursive patterns also work with paths returned by Windows.
+	pattern = strings.ReplaceAll(pattern, `\`, "/")
+	name = strings.ReplaceAll(name, `\`, "/")
 	if strings.Count(pattern, "**") > maxDoubleStars {
 		return false
 	}
@@ -22,7 +26,7 @@ func MatchGlob(pattern, name string) bool {
 
 func matchGlob(pattern, name string) bool {
 	if !strings.Contains(pattern, "**") {
-		ok, _ := filepath.Match(pattern, name)
+		ok, _ := path.Match(pattern, name)
 		return ok
 	}
 	parts := strings.SplitN(pattern, "**", 2)

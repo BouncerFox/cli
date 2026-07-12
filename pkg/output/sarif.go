@@ -3,15 +3,21 @@ package output
 import (
 	"encoding/json"
 	"io"
+	"net/url"
+	"strings"
 
 	"github.com/bouncerfox/cli/pkg/document"
 )
+
+func sarifArtifactURI(file string) string {
+	normalized := strings.ReplaceAll(file, `\`, "/")
+	return (&url.URL{Path: normalized}).String()
+}
 
 const (
 	sarifSchema  = "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"
 	sarifVersion = "2.1.0"
 	toolName     = "BouncerFox"
-	toolVersion  = "0.1.0"
 	toolInfoURI  = "https://github.com/bouncerfox/cli"
 )
 
@@ -86,6 +92,16 @@ func severityToSARIFLevel(s document.FindingSeverity) string {
 
 // FormatSARIF writes SARIF v2.1.0 output to w.
 func FormatSARIF(findings []document.ScanFinding, w io.Writer) error {
+	return FormatSARIFWithVersion(findings, w, "dev")
+}
+
+// FormatSARIFWithVersion writes SARIF v2.1.0 output with the supplied CLI
+// version as the tool driver version.
+func FormatSARIFWithVersion(findings []document.ScanFinding, w io.Writer, cliVersion string) error {
+	if cliVersion == "" {
+		cliVersion = "dev"
+	}
+
 	// Build deduplicated rules list (preserving first-seen order).
 	seen := map[string]bool{}
 	rules := []sarifReportingDescriptor{}
@@ -112,7 +128,7 @@ func FormatSARIF(findings []document.ScanFinding, w io.Writer) error {
 			locs = []sarifLocation{
 				{
 					PhysicalLocation: sarifPhysicalLocation{
-						ArtifactLocation: sarifArtifactLocation{URI: file},
+						ArtifactLocation: sarifArtifactLocation{URI: sarifArtifactURI(file)},
 						Region:           sarifRegion{StartLine: line},
 					},
 				},
@@ -135,7 +151,7 @@ func FormatSARIF(findings []document.ScanFinding, w io.Writer) error {
 				Tool: sarifTool{
 					Driver: sarifDriver{
 						Name:           toolName,
-						Version:        toolVersion,
+						Version:        cliVersion,
 						InformationURI: toolInfoURI,
 						Rules:          rules,
 					},

@@ -49,8 +49,9 @@ var validSeverities = map[string]struct{}{
 	"info":     {},
 }
 
-// idPattern validates rule ID format: 2-5 uppercase letters, underscore, 3 digits.
-var idPattern = regexp.MustCompile(`^[A-Z]{2,5}_\d{3}$`)
+// idPattern validates rule ID format: 2-6 uppercase letters, underscore, 3 digits.
+// Six letters accommodates the documented CUSTOM_NNN namespace.
+var idPattern = regexp.MustCompile(`^[A-Z]{2,6}_\d{3}$`)
 
 // Validate checks a raw rule map for structural and type correctness before
 // it is passed to Compile. It returns a descriptive error on the first problem found.
@@ -77,7 +78,7 @@ func Validate(rule map[string]any) error {
 		return fmt.Errorf("rule %q: \"id\" must be a non-empty string", ruleID)
 	}
 	if !idPattern.MatchString(idStr) {
-		return fmt.Errorf("rule %q: \"id\" must match format XX_NNN (e.g. SEC_001, CUST_012)", ruleID)
+		return fmt.Errorf("rule %q: \"id\" must use 2-6 uppercase letters, an underscore, and 3 digits (e.g. SEC_001, CUSTOM_012)", ruleID)
 	}
 
 	// --- required: severity ---
@@ -101,6 +102,9 @@ func Validate(rule map[string]any) error {
 	matchMap, ok := matchRaw.(map[string]any)
 	if !ok {
 		return fmt.Errorf("rule %q: \"match\" must be a map", ruleID)
+	}
+	if len(matchMap) == 0 {
+		return fmt.Errorf("rule %q: \"match\" must not be empty", ruleID)
 	}
 	if err := validateMatch(matchMap); err != nil {
 		return fmt.Errorf("rule %q: %w", ruleID, err)

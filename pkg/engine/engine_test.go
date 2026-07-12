@@ -510,6 +510,26 @@ func TestScan_CustomRulePanicRecovery(t *testing.T) {
 	}
 }
 
+func TestScan_PropagatesLocalSourcePath(t *testing.T) {
+	doc := &document.ConfigDocument{
+		FileType:   document.FileTypeClaudeMD,
+		FilePath:   "CLAUDE.md",
+		SourcePath: "/checkout/CLAUDE.md",
+		Content:    "api_key: 0123456789abcdef0123456789abcdef",
+		Parsed:     map[string]any{},
+	}
+	result := engine.Scan(context.Background(), []*document.ConfigDocument{doc}, engine.ScanOptions{
+		EnabledRules: []string{"SEC_001"},
+		RuleParams:   rules.DefaultRuleParams(),
+	})
+	if len(result.Findings) != 1 {
+		t.Fatalf("findings = %d, want 1", len(result.Findings))
+	}
+	if result.Findings[0].SourcePath != doc.SourcePath {
+		t.Errorf("SourcePath = %q, want %q", result.Findings[0].SourcePath, doc.SourcePath)
+	}
+}
+
 // ruleIDs returns a slice of rule IDs for error messages.
 func ruleIDs(findings []document.ScanFinding) []string {
 	ids := make([]string, len(findings))

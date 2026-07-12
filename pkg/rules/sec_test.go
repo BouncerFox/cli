@@ -917,6 +917,39 @@ func TestSEC018_JSONParseError(t *testing.T) {
 	}
 }
 
+func TestSEC019_ReportsYAMLReferenceRejections(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		line int
+	}{
+		{name: "merge key", yaml: "merged:\n  <<: {key: value}", line: 3},
+		{name: "undefined alias", yaml: "value: *missing", line: 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := parser.ParseFrontmatterMD(
+				document.FileTypeSkillMD,
+				"SKILL.md",
+				"---\n"+tt.yaml+"\n---\nBody",
+			)
+			findings := CheckSEC019(doc, defaultRC())
+			if len(findings) != 1 {
+				t.Fatalf("got %d findings, want 1", len(findings))
+			}
+			if findings[0].RuleID != "SEC_019" {
+				t.Errorf("rule ID = %q, want SEC_019", findings[0].RuleID)
+			}
+			if !strings.Contains(findings[0].Message, "merge key") {
+				t.Errorf("message should identify merge keys, got %q", findings[0].Message)
+			}
+			if line, _ := findings[0].Evidence["line"].(int); line != tt.line {
+				t.Errorf("line = %d, want %d", line, tt.line)
+			}
+		})
+	}
+}
+
 func TestSEC018_SkillMD(t *testing.T) {
 	content := "---\nname: test\n---\nThe value is " + highEntropyBase64
 	doc := newSkillDoc(content)

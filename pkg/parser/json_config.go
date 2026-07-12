@@ -64,8 +64,8 @@ func ParseJSONConfig(fileType, filePath, content string) *document.ConfigDocumen
 		return makeRejectionDoc(fileType, filePath, content, "binary_content")
 	}
 	content = NormalizeContent(content)
-	if len(content) > maxContentSize {
-		return makeRejectionDoc(fileType, filePath, content, "content_too_large")
+	if len(content) > MaxContentSize {
+		return makeRejectionDoc(fileType, filePath, content, RejectionReasonContentTooLarge)
 	}
 	if checkJSONDepth(content) {
 		return makeRejectionDoc(fileType, filePath, content, "json_nesting_depth")
@@ -73,7 +73,10 @@ func ParseJSONConfig(fileType, filePath, content string) *document.ConfigDocumen
 
 	var parsed map[string]any
 	if err := json.Unmarshal([]byte(content), &parsed); err != nil {
-		parsed = map[string]any{"_parse_error": true}
+		parsed = map[string]any{
+			"_parse_error": true,
+			"_reason":      RejectionReasonInvalidJSON,
+		}
 	}
 
 	return &document.ConfigDocument{

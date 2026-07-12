@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/bouncerfox/cli/pkg/document"
+	"github.com/bouncerfox/cli/pkg/fingerprint"
 	"github.com/bouncerfox/cli/pkg/platform"
 )
 
@@ -46,7 +47,7 @@ func BuildWireFindings(findings []document.ScanFinding, stripPaths, anonymous bo
 			RuleID:      f.RuleID,
 			Severity:    string(f.Severity),
 			Message:     msg,
-			Fingerprint: evidenceString(f.Evidence, "fingerprint"),
+			Fingerprint: fingerprint.ComputeFingerprint(f),
 			Remediation: f.Remediation,
 		}
 

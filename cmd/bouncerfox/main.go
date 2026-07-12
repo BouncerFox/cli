@@ -36,7 +36,7 @@ import (
 )
 
 const (
-	maxFileSize  = 1 * 1024 * 1024 // 1 MB
+	maxFileSize  = parser.MaxContentSize
 	maxFileCount = 500
 	scanTimeout  = 5 * time.Minute
 )
@@ -50,6 +50,108 @@ var platformEnabled = false
 var errStopWalk = errors.New("file limit reached")
 
 var version = "dev"
+
+type resolvedScanRoot struct {
+	requested    string
+	path         string
+	evidenceBase string
+	evidenceNS   string
+}
+
+func pathIsWithin(root, path string) bool {
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func commonNonRootAncestor(paths []string) (string, bool) {
+	if len(paths) == 0 {
+		return "", false
+	}
+
+	candidate := filepath.Clean(paths[0])
+	for _, path := range paths[1:] {
+		for !pathIsWithin(candidate, path) {
+			parent := filepath.Dir(candidate)
+			if parent == candidate {
+				return "", false
+			}
+			candidate = parent
+		}
+	}
+
+	// A filesystem root would leave absolute path components in the evidence.
+	if filepath.Dir(candidate) == candidate {
+		return "", false
+	}
+	return candidate, true
+}
+
+func resolveScanRoots(paths []string) ([]resolvedScanRoot, error) {
+	roots := make([]resolvedScanRoot, 0, len(paths))
+	containers := make([]string, 0, len(paths))
+	for _, requested := range paths {
+		absRoot, err := filepath.Abs(requested)
+		if err != nil {
+			return nil, fmt.Errorf("resolving path %s: %w", requested, err)
+		}
+		resolvedRoot, err := filepath.EvalSymlinks(absRoot)
+		if err != nil {
+			return nil, fmt.Errorf("resolving path %s: %w", requested, err)
+		}
+		info, err := os.Stat(resolvedRoot)
+		if err != nil {
+			return nil, fmt.Errorf("resolving path %s: %w", requested, err)
+		}
+
+		container := resolvedRoot
+		if !info.IsDir() {
+			container = filepath.Dir(resolvedRoot)
+		}
+		roots = append(roots, resolvedScanRoot{requested: requested, path: resolvedRoot})
+		containers = append(containers, container)
+	}
+
+	if len(roots) == 1 {
+		roots[0].evidenceBase = containers[0]
+		return roots, nil
+	}
+
+	if common, ok := commonNonRootAncestor(containers); ok {
+		for i := range roots {
+			roots[i].evidenceBase = common
+		}
+		return roots, nil
+	}
+
+	for i := range roots {
+		roots[i].evidenceBase = roots[i].path
+		roots[i].evidenceNS = fmt.Sprintf("root-%d", i+1)
+	}
+	return roots, nil
+}
+
+func (root resolvedScanRoot) evidencePath(path string) (string, error) {
+	rel, err := filepath.Rel(root.evidenceBase, path)
+	if err != nil {
+		return "", err
+	}
+	if rel == "." {
+		rel = filepath.Base(root.path)
+	}
+	if root.evidenceNS != "" {
+		rel = filepath.Join(root.evidenceNS, rel)
+	}
+	return strings.ReplaceAll(filepath.ToSlash(rel), `\`, "/"), nil
+}
+
+func validateScanProfile(profile string) error {
+	switch profile {
+	case config.ProfileRecommended, config.ProfileAllRules:
+		return nil
+	default:
+		return fmt.Errorf("unknown profile %q: must be one of recommended, all_rules", profile)
+	}
+}
 
 func main() {
 	rootCmd := &cobra.Command{
@@ -99,22 +201,46 @@ func newScanCmd() *cobra.Command {
 		Short: "Scan files for security and quality issues",
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			switch formatFlag {
+			case "table", "json", "sarif":
+				// valid
+			default:
+				return fmt.Errorf("unknown output format %q: must be one of table, json, sarif", formatFlag)
+			}
+
+			switch offlineBehavior {
+			case "", "warn", "fail-closed":
+				// valid; empty selects the environment-dependent default
+			default:
+				return fmt.Errorf("unknown offline behavior %q: must be one of warn, fail-closed", offlineBehavior)
+			}
+
 			// Determine paths to scan; default to ".".
 			paths := args
 			if len(paths) == 0 {
 				paths = []string{"."}
 			}
+			scanRoots, err := resolveScanRoots(paths)
+			if err != nil {
+				return err
+			}
 
 			// Load local config.
 			var cfg *config.Config
-			var err error
 			if configFlag != "" {
-				cfg, err = config.LoadProjectConfig(filepath.Dir(configFlag))
+				cfg, err = config.LoadConfigFile(configFlag)
 			} else {
-				cfg, err = config.LoadConfig(".")
+				configDir := paths[0]
+				if info, statErr := os.Stat(configDir); statErr == nil && !info.IsDir() {
+					configDir = filepath.Dir(configDir)
+				}
+				cfg, err = config.LoadConfig(configDir)
 			}
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
+			}
+			if err := validateScanProfile(cfg.Profile); err != nil {
+				return err
 			}
 
 			// Merge CLI --ignore patterns into config.
@@ -140,9 +266,8 @@ func newScanCmd() *cobra.Command {
 			}
 
 			// Detect scan target (needed for both modes).
-			absRootFirst, _ := filepath.Abs(paths[0])
 			tgt := target.Detect(target.DetectOptions{
-				ScanRoot:     absRootFirst,
+				ScanRoot:     scanRoots[0].path,
 				TargetFlag:   targetFlag,
 				ConfigTarget: cfg.Target,
 				TriggerFlag:  triggerFlag,
@@ -200,6 +325,10 @@ func newScanCmd() *cobra.Command {
 				}
 			}
 
+			if err := validateScanProfile(cfg.Profile); err != nil {
+				return err
+			}
+
 			// Apply CLI-only overrides after all config resolution.
 			cfg.NoFloor = noFloorFlag
 			if severityFlag != "" {
@@ -225,14 +354,35 @@ func newScanCmd() *cobra.Command {
 			var docs []*document.ConfigDocument
 			fileCount := 0
 			skippedCount := 0
-			for _, root := range paths {
-				// Resolve the scan root to an absolute path for containment checks.
-				absRoot, err := filepath.Abs(root)
-				if err != nil {
-					return fmt.Errorf("resolving path %s: %w", root, err)
+			appendDocument := func(root resolvedScanRoot, path string, doc *document.ConfigDocument) error {
+				if doc == nil {
+					return nil
 				}
+				evidencePath, pathErr := root.evidencePath(path)
+				if pathErr != nil {
+					return fmt.Errorf("making %s relative to scan root: %w", path, pathErr)
+				}
+				doc.SourcePath = path
+				doc.FilePath = evidencePath
 
-				err = filepath.WalkDir(absRoot, func(path string, d fs.DirEntry, walkErr error) error {
+				reason, line, rejected := parser.RejectionDetails(doc)
+				if rejected {
+					format := ""
+					switch reason {
+					case parser.RejectionReasonInvalidYAML:
+						format = "YAML"
+					case parser.RejectionReasonInvalidJSON:
+						format = "JSON"
+					}
+					if format != "" {
+						fmt.Fprintf(os.Stderr, "warning: could not parse %s as %s at line %d\n", path, format, line)
+					}
+				}
+				docs = append(docs, doc)
+				return nil
+			}
+			for _, root := range scanRoots {
+				err = filepath.WalkDir(root.path, func(path string, d fs.DirEntry, walkErr error) error {
 					// Respect scan timeout.
 					if ctx.Err() != nil {
 						return ctx.Err()
@@ -262,16 +412,15 @@ func newScanCmd() *cobra.Command {
 						return nil
 					}
 					// Reject files whose real path escapes the scan root.
-					rel, err := filepath.Rel(absRoot, absReal)
-					if err != nil || rel == ".." || (len(rel) >= 3 && rel[:3] == "../") {
+					if !pathIsWithin(root.path, absReal) {
 						fmt.Fprintf(os.Stderr, "warning: skipping %s: resolves outside scan root\n", path)
 						skippedCount++
 						return nil
 					}
 
 					// Check ignore patterns from config against both original and resolved paths.
-					relPath, _ := filepath.Rel(absRoot, path)
-					relReal, _ := filepath.Rel(absRoot, absReal)
+					relPath, _ := filepath.Rel(root.path, path)
+					relReal, _ := filepath.Rel(root.path, absReal)
 					for _, pattern := range cfg.Ignore {
 						if pathutil.MatchGlob(pattern, filepath.Base(path)) || pathutil.MatchGlob(pattern, relPath) {
 							return nil
@@ -288,23 +437,23 @@ func newScanCmd() *cobra.Command {
 					}
 
 					// Enforce max file count on governed files only.
-					fileCount++
 					if fileCount >= maxFileCount {
 						fmt.Fprintf(os.Stderr, "warning: file limit (%d) reached; stopping scan\n", maxFileCount)
 						return errStopWalk
 					}
+					fileCount++
 
 					// Enforce max file size.
 					// NOTE: TOCTOU between this check and ReadFile below is accepted for a local CLI tool.
-					info, err := d.Info()
+					info, err := os.Stat(absReal)
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "warning: could not stat %s: %v\n", path, err)
 						return nil
 					}
 					if info.Size() > maxFileSize {
-						fmt.Fprintf(os.Stderr, "warning: skipping %s: file too large (%d bytes)\n", path, info.Size())
+						fmt.Fprintf(os.Stderr, "warning: %s is too large for content analysis (%d bytes)\n", path, info.Size())
 						skippedCount++
-						return nil
+						return appendDocument(root, path, parser.RouteRejection(path, parser.RejectionReasonContentTooLarge))
 					}
 
 					content, err := os.ReadFile(path) //nolint:gosec // G304: reading user-provided config file
@@ -314,10 +463,7 @@ func newScanCmd() *cobra.Command {
 					}
 
 					doc := parser.RouteAndParse(path, string(content))
-					if doc != nil {
-						docs = append(docs, doc)
-					}
-					return nil
+					return appendDocument(root, path, doc)
 				})
 				if err == errStopWalk {
 					break
@@ -327,7 +473,7 @@ func newScanCmd() *cobra.Command {
 						fmt.Fprintf(os.Stderr, "warning: scan timed out after %s\n", scanTimeout)
 						break
 					}
-					return fmt.Errorf("walking %s: %w", root, err)
+					return fmt.Errorf("walking %s: %w", root.requested, err)
 				}
 			}
 
@@ -337,17 +483,18 @@ func newScanCmd() *cobra.Command {
 				opts.MaxFindings = maxFindingsFlag
 			}
 
-			// Compile custom rules from platform config.
+			// Compile custom rules from local or platform config.
 			for _, cr := range cfg.CustomRules {
-				if len(cr.MatchConfig) == 0 {
-					continue
-				}
 				ruleMap := map[string]any{
 					"id":          cr.RuleID,
 					"name":        cr.Name,
 					"severity":    cr.Severity,
 					"remediation": cr.Description,
 					"match":       cr.MatchConfig,
+				}
+				if validateErr := custom.Validate(ruleMap); validateErr != nil {
+					fmt.Fprintf(os.Stderr, "warning: invalid custom rule %s: %v\n", cr.RuleID, validateErr)
+					continue
 				}
 				checkFn, compileErr := custom.Compile(ruleMap)
 				if compileErr != nil {
@@ -377,15 +524,15 @@ func newScanCmd() *cobra.Command {
 					return fmt.Errorf("formatting output: %w", err)
 				}
 			case "sarif":
-				if err := output.FormatSARIF(result.Findings, os.Stdout); err != nil {
+				if err := output.FormatSARIFWithVersion(result.Findings, os.Stdout, version); err != nil {
 					return fmt.Errorf("formatting output: %w", err)
 				}
-			default: // "table" or empty
+			default: // "table"
 				fmtOpts := output.FormatOptions{
 					Verbose:  verboseFlag,
 					NoColor:  noColorFlag,
 					IsTTY:    output.IsTerminalStdout(),
-					ScanRoot: absRootFirst,
+					ScanRoot: scanRoots[0].evidenceBase,
 					GroupBy:  groupByFlag,
 					Stats: output.ScanStats{
 						FilesScanned: result.FilesScanned,

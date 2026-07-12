@@ -146,13 +146,13 @@ var dangerousEnvVars = map[string]bool{
 	"PIP_EXTRA_INDEX_URL":   true,
 }
 
-// CheckSEC019 detects YAML anchor/alias usage (potential YAML bomb).
+// CheckSEC019 detects YAML anchor, alias, or merge-key usage (potential YAML bomb).
 func CheckSEC019(doc *document.ConfigDocument, rc *document.RuleContext) []document.ScanFinding {
 	if !hasParseError(doc) {
 		return nil
 	}
 	reason, _ := doc.Parsed["_reason"].(string)
-	if reason != "yaml_anchors" {
+	if reason != parser.RejectionReasonYAMLReferences {
 		return nil
 	}
 	line := 1
@@ -162,13 +162,13 @@ func CheckSEC019(doc *document.ConfigDocument, rc *document.RuleContext) []docum
 	return []document.ScanFinding{{
 		RuleID:   "SEC_019",
 		Severity: document.SeverityHigh,
-		Message:  "YAML anchor/alias detected — potential YAML bomb",
+		Message:  "YAML anchor, alias, or merge key detected — potential YAML bomb",
 		Evidence: map[string]any{
 			"file":    doc.FilePath,
 			"line":    line,
 			"snippet": "",
 		},
-		Remediation: "Remove YAML anchors (&) and aliases (*) from frontmatter.",
+		Remediation: "Remove YAML anchors (&), aliases (*), and merge keys (<<:) from frontmatter.",
 	}}
 }
 

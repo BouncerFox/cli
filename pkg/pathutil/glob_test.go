@@ -33,6 +33,8 @@ func TestMatchGlob(t *testing.T) {
 		{"vendor/**/*.go", "vendor/pkg/file.go", true},
 		{"vendor/**/*.go", "vendor/file.go", true},
 		{"vendor/**/*.go", "vendor/pkg/file.md", false},
+		{"vendor/**/*.go", `vendor\pkg\file.go`, true},
+		{`vendor\**\*.go`, `vendor\pkg\file.go`, true},
 
 		// Multiple ** segments
 		{"**/testdata/**", "cmd/bouncerfox/testdata/bad-skill/.claude/skills/bad/SKILL.md", true},

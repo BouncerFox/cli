@@ -33,7 +33,7 @@ func ComputeFingerprint(finding document.ScanFinding) string {
 	if finding.Evidence != nil {
 		if v, ok := finding.Evidence["file"]; ok {
 			if s, _ := v.(string); s != "" {
-				filePath = s
+				filePath = strings.ReplaceAll(s, `\`, "/")
 			}
 		}
 	}

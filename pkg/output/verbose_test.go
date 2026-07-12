@@ -38,6 +38,51 @@ func TestWriteCodeFrame_ShowsContext(t *testing.T) {
 	}
 }
 
+func TestWriteCodeFrameAtRoot_ResolvesRelativeEvidence(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, ".claude", "skills", "example", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("line1\nline2\nline3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	f := document.ScanFinding{
+		RuleID:   "SEC_002",
+		Severity: "high",
+		Evidence: map[string]any{"file": ".claude/skills/example/SKILL.md", "line": 2},
+	}
+	var buf bytes.Buffer
+	writeCodeFrameAtRoot(&buf, renderMode{colors: false, unicode: false}, f, dir)
+	if !strings.Contains(buf.String(), "line2") {
+		t.Fatalf("relative evidence path did not produce code frame:\n%s", buf.String())
+	}
+}
+
+func TestWriteCodeFrameAtRoot_PrefersFindingSourcePath(t *testing.T) {
+	dir := t.TempDir()
+	file := filepath.Join(dir, "actual", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("line1\nline2\nline3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	f := document.ScanFinding{
+		RuleID:     "SEC_002",
+		Severity:   "high",
+		Evidence:   map[string]any{"file": "root-2/SKILL.md", "line": 2},
+		SourcePath: file,
+	}
+	var buf bytes.Buffer
+	writeCodeFrameAtRoot(&buf, renderMode{colors: false, unicode: false}, f, filepath.Join(dir, "wrong-root"))
+	if !strings.Contains(buf.String(), "line2") {
+		t.Fatalf("finding source path did not produce code frame:\n%s", buf.String())
+	}
+}
+
 func TestWriteCodeFrame_MasksSecrets(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "test.md")

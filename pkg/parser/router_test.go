@@ -42,6 +42,8 @@ func TestIsGovernedFile(t *testing.T) {
 		// Filename-only fallbacks
 		{"SKILL.md", true},
 		{"sub/SKILL.md", true},
+		{`.claude\skills\my-skill\SKILL.md`, true},
+		{`sub\AGENTS.md`, true},
 		// Negative cases
 		{".claude/rules/.md", false},
 		{"hooks.json", false},
@@ -49,6 +51,7 @@ func TestIsGovernedFile(t *testing.T) {
 		{"lsp.json", false},
 		{"agents.md", false},
 		{"cursorrules", false},
+		{`..\..\CLAUDE.md`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
@@ -87,10 +90,40 @@ func TestRouteAndParse_EmptyContent(t *testing.T) {
 	}
 }
 
+func TestRouteRejection(t *testing.T) {
+	doc := RouteRejection(`.claude\skills\example\SKILL.md`, RejectionReasonContentTooLarge)
+	if doc == nil {
+		t.Fatal("expected routed rejection document")
+	}
+	if doc.FileType != "skill_md" {
+		t.Errorf("FileType = %q, want skill_md", doc.FileType)
+	}
+	if doc.ContentHash != "" {
+		t.Errorf("ContentHash = %q, want empty because content was not read", doc.ContentHash)
+	}
+	reason, _, rejected := RejectionDetails(doc)
+	if !rejected || reason != RejectionReasonContentTooLarge {
+		t.Errorf("rejection = (%q, %v), want content-too-large rejection", reason, rejected)
+	}
+}
+
 func TestRouteAndParse_PathTraversalInContent(t *testing.T) {
 	doc := RouteAndParse("../../../CLAUDE.md", "content")
 	if doc != nil {
 		t.Error("path traversal should be rejected (nil doc)")
+	}
+}
+
+func TestRouteAndParse_WindowsPath(t *testing.T) {
+	doc := RouteAndParse(`C:\repo\.claude\skills\example\SKILL.md`, "---\nname: example\n---\nbody")
+	if doc == nil {
+		t.Fatal("expected Windows path to route to the frontmatter parser")
+	}
+	if doc.FileType != "skill_md" {
+		t.Errorf("FileType = %q, want skill_md", doc.FileType)
+	}
+	if doc.FilePath != `C:\repo\.claude\skills\example\SKILL.md` {
+		t.Errorf("FilePath = %q, want original Windows path", doc.FilePath)
 	}
 }
 

@@ -169,11 +169,7 @@ func TestPhase1ErrorFixtures_HaveStableShape(t *testing.T) {
 }
 
 func TestPhase1Manifest_MatchesFixtureBytes(t *testing.T) {
-	var manifest struct {
-		Version  int               `json:"version"`
-		Fixtures map[string]string `json:"fixtures"`
-	}
-	manifest = decodeStrict[struct {
+	manifest := decodeStrict[struct {
 		Version  int               `json:"version"`
 		Fixtures map[string]string `json:"fixtures"`
 	}](t, "manifest.json")

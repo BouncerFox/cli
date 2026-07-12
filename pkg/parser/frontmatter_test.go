@@ -80,6 +80,59 @@ func TestParseFrontmatterMD_Basic(t *testing.T) {
 	}
 }
 
+func TestParseFrontmatterMD_CRLF(t *testing.T) {
+	lfContent := "---\nname: example\ndescription: CRLF fixture\n---\n# Body\nText\n"
+	crlfContent := strings.ReplaceAll(lfContent, "\n", "\r\n")
+
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", crlfContent)
+	if doc.Parsed["_parse_error"] == true {
+		t.Fatalf("CRLF frontmatter should parse successfully: %v", doc.Parsed)
+	}
+	if doc.Content != lfContent {
+		t.Errorf("Content = %q, want canonical LF content %q", doc.Content, lfContent)
+	}
+
+	fm, ok := doc.Parsed["frontmatter"].(map[string]any)
+	if !ok {
+		t.Fatal("frontmatter not found or wrong type")
+	}
+	if fm["name"] != "example" {
+		t.Errorf("name = %v, want example", fm["name"])
+	}
+	if fm["description"] != "CRLF fixture" {
+		t.Errorf("description = %v, want CRLF fixture", fm["description"])
+	}
+	if body, _ := doc.Parsed["body"].(string); body != "# Body\nText\n" {
+		t.Errorf("body = %q, want canonical LF body", body)
+	}
+	if lines, _ := doc.Parsed["frontmatter_lines"].(map[string]int); lines["description"] != 3 {
+		t.Errorf("frontmatter_lines[description] = %d, want 3", lines["description"])
+	}
+
+	lfDoc := ParseFrontmatterMD("skill_md", "SKILL.md", lfContent)
+	if doc.ContentHash != lfDoc.ContentHash {
+		t.Errorf("ContentHash differs by line-ending style: CRLF %q, LF %q", doc.ContentHash, lfDoc.ContentHash)
+	}
+}
+
+func TestParseFrontmatterMD_CRLFYAMLReferenceRejected(t *testing.T) {
+	content := "---\r\nitems: [&item value, *item]\r\n---\r\nBody\r\n"
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
+
+	if doc.Parsed["_parse_error"] != true {
+		t.Fatal("expected YAML reference in CRLF frontmatter to be rejected")
+	}
+	if reason, _ := doc.Parsed["_reason"].(string); reason != RejectionReasonYAMLReferences {
+		t.Errorf("_reason = %q, want %q", reason, RejectionReasonYAMLReferences)
+	}
+	if line, _ := doc.Parsed["_rejection_line"].(int); line != 2 {
+		t.Errorf("_rejection_line = %d, want 2", line)
+	}
+	if strings.Contains(doc.Content, "\r") {
+		t.Errorf("Content contains a carriage return after normalization: %q", doc.Content)
+	}
+}
+
 func TestParseFrontmatterMD_NoFrontmatter(t *testing.T) {
 	content := readFixture(t, "../../testdata/skills/no-frontmatter.md")
 	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)

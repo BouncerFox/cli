@@ -16,7 +16,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.12'
 
       - name: Run Phase 1 contract tests
         run: go test ./pkg/platform ./pkg/config ./pkg/upload -run 'Phase1|ExtractSkillMetadata' -v
@@ -47,7 +47,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.25.12'
 
       - name: Run tests
         run: go test ./...

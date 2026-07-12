@@ -94,14 +94,12 @@ bouncerfox init
 
 | Code | Meaning |
 |---|---|
-| `0` | No findings at or above the severity threshold, or "informational" verdict from platform |
-| `1` | One or more findings found (or "fail" verdict from platform) |
-| `2` | Scanner error (or platform unreachable in fail-closed mode) |
+| `0` | No findings at or above the severity threshold |
+| `1` | One or more findings found |
+| `2` | Scanner error |
 
-In connected mode, the platform returns one of four verdicts: `pass` (no findings),
-`warn` (findings below enforcement threshold), `fail` (findings match enforcement rules),
-or `informational` (org has no enforcement configured). Both `pass` and `informational`
-map to exit code 0. `warn` maps to 0. `fail` maps to 1.
+Release builds currently run in offline mode. The platform verdict contract is implemented
+and tested for the forthcoming connected mode, but it is not enabled in release binaries.
 
 ## Rules
 
@@ -140,7 +138,7 @@ When both global and project configs exist, they are merged:
 - **Rules**: deep-merged per rule ID. Project overrides specific fields, unset fields inherit from global.
 - **Rule params**: replaced wholesale. Project params for a rule replace global params entirely.
 - **CLI flags**: always override both config files
-- **Platform config** (connected mode): overrides all local config
+- **Platform config**: reserved for connected mode; release builds do not fetch it
 
 Example. Global config sets org-wide defaults:
 
@@ -269,7 +267,11 @@ jobs:
 
 ### SARIF upload to GitHub Code Scanning
 
+The CLI writes SARIF to standard output, so save it before invoking GitHub's uploader:
+
 ```yaml
+      - name: Run BouncerFox
+        run: bouncerfox scan . --format sarif > results.sarif || test "$?" -eq 1
       - uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: results.sarif
@@ -292,35 +294,16 @@ Post findings directly on a pull request and as a GitHub check run with inline a
 auto-detected from the GitHub event payload when `--pr-number` is not set. If a commit SHA
 is available, a check run with per-file annotations is also posted.
 
-### Connected mode (platform integration)
+### Connected mode status
 
-When `BOUNCERFOX_API_KEY` is set, the CLI automatically enters connected mode:
-pulls org-level rule config (including custom rules and their match configs) before
-scanning, uploads findings (with PR number and skill metadata) after, and uses the
-platform's verdict for the exit code.
+Connected mode is under integration and is deliberately disabled in release builds.
+Setting `BOUNCERFOX_API_KEY` currently prints a note and the scan continues offline;
+it does not fetch platform config, upload findings, or use a remote verdict.
 
-Custom rules created in the platform dashboard are automatically compiled and executed
-alongside built-in rules during the scan. If the platform's built-in rules version
-differs from the CLI's, a warning is printed to stderr.
-
-In connected mode, the CLI **does not** post Check Runs or PR comments. The
-platform handles all GitHub feedback via its GitHub App. The `--github-comment`
-flag is ignored. No `GITHUB_TOKEN` is needed.
-
-```yaml
-    steps:
-      - uses: actions/checkout@v4
-      - uses: bouncerfox/cli@v0
-        env:
-          BOUNCERFOX_API_KEY: ${{ secrets.BOUNCERFOX_API_KEY }}
-```
-
-If the platform is unreachable in CI, the default behavior is **fail-closed** (exit 2).
-Override with `--offline-behavior warn` to fall back to local exit logic.
-
-If the platform returns **409** (scan superseded by a newer commit), the CLI prints a
-warning and falls back to local exit logic. If it returns **402** (subscription lapsed),
-the CLI warns and falls back similarly.
+The config-pull, upload, privacy, caching, and verdict contracts remain covered by the
+CLI test suite while platform policy resolution and end-to-end release validation are
+completed. Do not depend on connected-mode flags or API-key authentication in production
+automation yet.
 
 ## CLI Reference
 
@@ -338,11 +321,11 @@ Scan files for security and quality issues. Defaults to scanning the current dir
 | `--pr-number` | | `0` | PR number for GitHub comment (auto-detected in CI) |
 | `--target` | | | Override scan target identity |
 | `--trigger` | | | Override trigger detection: `ci` or `local` |
-| `--offline-behavior` | | | When upload fails: `warn` or `fail-closed` (auto: fail-closed in CI, warn locally) |
+| `--offline-behavior` | | | Pre-release connected mode: upload failure behavior (`warn` or `fail-closed`) |
 | `--dry-run-upload` | | `false` | Preview upload payload without sending |
 | `--strip-paths` | | `false` | Send filenames only (no full paths) in upload |
-| `--anonymous` | | `false` | Strip all identifying info from upload |
-| `--no-cache` | | `false` | Skip config cache (always pull fresh) |
+| `--anonymous` | | `false` | Preview an upload without target, commit, or branch fields; full connected-mode privacy is not released |
+| `--no-cache` | | `false` | Pre-release connected mode: skip platform config cache |
 | `--group-by` | | `file` | Group findings by: `file`, `rule`, `severity` |
 | `--verbose` | `-v` | `false` | Show remediation and code frames |
 | `--ignore` | | | Gitignore-style globs to skip (repeatable) |
@@ -366,9 +349,8 @@ Generate a shell completion script for the specified shell.
 
 ### `bouncerfox auth`
 
-Authenticate with the BouncerFox platform. Opens a browser to the platform
-dashboard, then prompts you to paste your API key. Saves the key to
-`~/.config/bouncerfox/credentials`.
+Reserved for platform authentication. Release builds currently report that the platform
+integration is coming soon and do not open a browser or store credentials.
 
 ### `bouncerfox config refresh`
 
@@ -379,8 +361,8 @@ to pull fresh config on the next scan.
 
 | Variable | Description |
 |---|---|
-| `BOUNCERFOX_API_KEY` | Platform API key. Enables connected mode (config pull + upload + verdict). |
-| `BOUNCERFOX_PLATFORM_URL` | Platform API base URL (default: `https://api.bouncerfox.dev`) |
+| `BOUNCERFOX_API_KEY` | Reserved platform API key. Release builds remain offline when it is set. |
+| `BOUNCERFOX_PLATFORM_URL` | Reserved platform API base URL (default: `https://api.bouncerfox.dev`) |
 | `BOUNCERFOX_CONFIG_DIR` | Config directory override (default: `~/.config/bouncerfox`) |
 | `BOUNCERFOX_TARGET` | Override scan target identity |
 | `GITHUB_TOKEN` | Required for `--github-comment` (PR comments and check runs) |
@@ -391,58 +373,20 @@ CI environment variables (`GITHUB_ACTIONS`, `CI`, `GITHUB_SHA`, `GITHUB_REF_NAME
 
 ## Platform Integration
 
-The BouncerFox platform adds governance workflows on top of the CLI scanner:
-approval flows, enforcement policies, compliance exports, and cross-repo analytics.
+The BouncerFox platform is intended to add approval flows, enforcement policies,
+compliance exports, and cross-project analytics on top of the offline scanner. The
+wire contracts and integration code are present for development, but connected mode
+will remain disabled until the CLI and a running platform pass the release integration
+matrix with one shared governance policy.
 
-**Connected mode** activates automatically when `BOUNCERFOX_API_KEY` is set (via env var
-or `bouncerfox auth`). In connected mode the CLI:
-
-1. Pulls org-level rule config from the platform (cached locally with ETag validation), including custom rules with full match configs
-2. Compiles and executes platform custom rules alongside built-in rules
-3. Warns if the platform's `rules_version` differs from the CLI's built-in version
-4. Uploads findings to the platform (including PR number and skill metadata)
-5. Uses the platform's verdict for the exit code (`pass`, `warn`, `fail`, or `informational`)
-
-In connected mode, the platform owns the GitHub Check Run lifecycle. The CLI does not
-post Check Runs or PR comments. This allows the platform to update Check Runs when
-findings are acknowledged.
-
-**What gets sent:** rule IDs, severities, file paths, line numbers, fingerprints, scan metadata.
-**Never sent:** file contents, code snippets, matched secret values, environment variables.
-
-```bash
-# Authenticate (saves API key locally)
-bouncerfox auth
-
-# Scan. Connected mode activates automatically.
-bouncerfox scan .
-
-# Preview what would be uploaded
-bouncerfox scan . --dry-run-upload
-
-# Strip full paths from upload payload
-bouncerfox scan . --strip-paths
-
-# Fully anonymous upload (no target, commit, or branch info)
-bouncerfox scan . --anonymous
-
-# Force fresh config pull (skip cache)
-bouncerfox scan . --no-cache
-
-# Clear cached config
-bouncerfox config refresh
-```
-
-Set the API key via environment variable to avoid it appearing in shell history:
-
-```bash
-export BOUNCERFOX_API_KEY=bf_xxx
-bouncerfox scan .
-```
+`--dry-run-upload` can be used to inspect the proposed upload payload without sending it.
+The contract is designed to send rule IDs, severities, paths, line numbers, fingerprints,
+and scan metadata—not file contents, code snippets, matched secret values, or environment
+variables.
 
 ## Security
 
-- **Offline by default.** No network calls unless `BOUNCERFOX_API_KEY` is set or `--github-comment` is used.
+- **Offline release builds.** Setting `BOUNCERFOX_API_KEY` does not enable network access; `--github-comment` is the explicit networked scan path.
 - Max file size: 1 MB. Max file count: 500. Scan timeout: 5 minutes.
 - Symlinks pointing outside the scan root are rejected
 - Custom rule regex uses RE2. No ReDoS risk.

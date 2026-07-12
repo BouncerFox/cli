@@ -9,7 +9,7 @@ inputs:
     description: 'Path to scan'
     default: '.'
   api-key:
-    description: 'BouncerFox platform API key (enables connected mode)'
+    description: 'Reserved BouncerFox platform API key (connected mode is not enabled in release builds)'
     default: ''
   format:
     description: 'Output format (table, json, sarif)'
@@ -21,7 +21,7 @@ inputs:
     description: 'Post findings as PR comment with inline annotations'
     default: 'true'
   config:
-    description: 'Config file path (standalone mode only)'
+    description: 'Config file path'
     default: ''
 runs:
   using: 'docker'

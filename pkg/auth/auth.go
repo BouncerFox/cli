@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/bouncerfox/cli/pkg/configdir"
@@ -28,11 +29,14 @@ func ResolveAPIKey() string {
 		return ""
 	}
 
-	// Warn if credentials file has overly broad permissions.
-	if info, statErr := os.Stat(path); statErr == nil {
-		mode := info.Mode()
-		if mode&0o077 != 0 {
-			fmt.Fprintf(os.Stderr, "warning: credentials file %s has overly broad permissions (%o), expected 0600\n", path, mode.Perm())
+	// Unix mode bits are not meaningful on Windows, where access is governed by
+	// ACLs and os.FileMode reports only a limited synthesized permission view.
+	if runtime.GOOS != "windows" {
+		if info, statErr := os.Stat(path); statErr == nil {
+			mode := info.Mode()
+			if mode&0o077 != 0 {
+				fmt.Fprintf(os.Stderr, "warning: credentials file %s has overly broad permissions (%o), expected 0600\n", path, mode.Perm())
+			}
 		}
 	}
 

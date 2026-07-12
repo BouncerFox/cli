@@ -3,6 +3,7 @@ package platform
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -52,6 +53,10 @@ func TestConfigCache_Invalidate(t *testing.T) {
 }
 
 func TestConfigCache_EnforcesPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows uses ACLs rather than Unix mode bits")
+	}
+
 	dir := filepath.Join(t.TempDir(), "cache")
 	// Pre-create the dir with overly broad permissions.
 	if err := os.MkdirAll(dir, 0o755); err != nil {

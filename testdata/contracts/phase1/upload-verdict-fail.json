@@ -1,0 +1,14 @@
+{
+  "scan_id": "33333333-3333-3333-3333-333333333333",
+  "verdict": "fail",
+  "reasons": [
+    {
+      "rule": "SEC_001",
+      "policy": "block_on",
+      "message": "Critical finding matches the organization block list."
+    }
+  ],
+  "scan_url": "https://app.bouncerfox.dev/scans/33333333-3333-3333-3333-333333333333",
+  "finding_count": 1,
+  "project_id": "cccccccc-cccc-cccc-cccc-cccccccccccc"
+}

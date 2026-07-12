@@ -312,3 +312,18 @@ func TestComputeFingerprint_SameFileProducesSameFingerprint(t *testing.T) {
 		t.Error("fingerprints should match for same file and evidence")
 	}
 }
+
+func TestComputeFingerprint_NormalizesPathSeparators(t *testing.T) {
+	unixPath := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Evidence: map[string]any{"file": ".claude/skills/sample/SKILL.md", "snippet": "secret123"},
+	}
+	windowsPath := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Evidence: map[string]any{"file": `.claude\skills\sample\SKILL.md`, "snippet": "secret123"},
+	}
+
+	if fingerprint.ComputeFingerprint(unixPath) != fingerprint.ComputeFingerprint(windowsPath) {
+		t.Error("fingerprint should not depend on slash direction")
+	}
+}

@@ -1,0 +1,14 @@
+{
+  "scan_id": "22222222-2222-2222-2222-222222222222",
+  "verdict": "warn",
+  "reasons": [
+    {
+      "rule": "QA_001",
+      "policy": "below_threshold",
+      "message": "Findings exist below the enforcement threshold."
+    }
+  ],
+  "scan_url": "https://app.bouncerfox.dev/scans/22222222-2222-2222-2222-222222222222",
+  "finding_count": 1,
+  "project_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+}

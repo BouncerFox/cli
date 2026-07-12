@@ -4,7 +4,6 @@ package output
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -110,7 +109,7 @@ func FormatTable(findings []document.ScanFinding, w io.Writer, opts FormatOption
 			return err
 		}
 		for _, e := range g.entries {
-			if err := writeEntry(w, rm, e, mode, opts.Verbose); err != nil {
+			if err := writeEntry(w, rm, e, mode, opts.Verbose, opts.ScanRoot); err != nil {
 				return err
 			}
 		}
@@ -245,7 +244,7 @@ func highestSeverity(entries []entry) int {
 }
 
 // writeEntry writes a single finding line. The format varies by grouping mode.
-func writeEntry(w io.Writer, rm renderMode, e entry, mode string, verbose bool) error {
+func writeEntry(w io.Writer, rm renderMode, e entry, mode string, verbose bool, scanRoot string) error {
 	f := e.finding
 	badge := rm.severityBadge(string(f.Severity))
 	fileLine := e.file
@@ -286,7 +285,7 @@ func writeEntry(w io.Writer, rm renderMode, e entry, mode string, verbose bool) 
 		}
 	}
 	if verbose {
-		writeCodeFrame(w, rm, f)
+		writeCodeFrameAtRoot(w, rm, f, scanRoot)
 	}
 	return nil
 }
@@ -354,14 +353,26 @@ func formatDuration(d time.Duration) string {
 // relPath returns a path relative to root, or the original path if
 // Rel fails or root is empty.
 func relPath(root, file string) string {
+	file = strings.ReplaceAll(file, `\`, "/")
+	root = strings.ReplaceAll(root, `\`, "/")
 	if root == "" {
 		return file
 	}
-	rel, err := filepath.Rel(root, file)
-	if err != nil {
-		return file
+	root = strings.TrimRight(root, "/")
+	if root == "" {
+		root = "/"
 	}
-	return rel
+	if file == root {
+		return "."
+	}
+	prefix := root
+	if prefix != "/" {
+		prefix += "/"
+	}
+	if strings.HasPrefix(file, prefix) {
+		return strings.TrimPrefix(file, prefix)
+	}
+	return file
 }
 
 // evidenceFileAndLine extracts file and line from an evidence map.

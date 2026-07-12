@@ -156,6 +156,9 @@ func Scan(ctx context.Context, docs []*document.ConfigDocument, opts ScanOptions
 			findings, _ := safeCheck(rule.ID, doc.FilePath, func() []document.ScanFinding { return rule.Check(doc, rc) })
 
 			for _, f := range findings {
+				if f.SourcePath == "" {
+					f.SourcePath = doc.SourcePath
+				}
 				// Apply severity override if configured.
 				if sev, ok := opts.SeverityOverrides[f.RuleID]; ok {
 					f.Severity = sev
@@ -194,6 +197,9 @@ func Scan(ctx context.Context, docs []*document.ConfigDocument, opts ScanOptions
 			findings, _ := safeCheck(cc.RuleID, doc.FilePath, func() []document.ScanFinding { return cc.Check(doc) })
 
 			for _, f := range findings {
+				if f.SourcePath == "" {
+					f.SourcePath = doc.SourcePath
+				}
 				if sev, ok := opts.SeverityOverrides[f.RuleID]; ok {
 					f.Severity = sev
 				}

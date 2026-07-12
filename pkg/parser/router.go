@@ -59,6 +59,7 @@ var routeTable = []route{
 }
 
 func validateFilePath(path string) bool {
+	path = strings.ReplaceAll(path, `\`, "/")
 	for _, segment := range strings.Split(path, "/") {
 		if segment == ".." {
 			return false
@@ -72,8 +73,9 @@ func IsGovernedFile(path string) bool {
 	if !validateFilePath(path) {
 		return false
 	}
+	normalizedPath := strings.ReplaceAll(path, `\`, "/")
 	for _, r := range routeTable {
-		if r.pattern.MatchString(path) {
+		if r.pattern.MatchString(normalizedPath) {
 			return true
 		}
 	}
@@ -86,9 +88,28 @@ func RouteAndParse(filePath, content string) *document.ConfigDocument {
 	if !validateFilePath(filePath) {
 		return nil
 	}
+	normalizedPath := strings.ReplaceAll(filePath, `\`, "/")
 	for _, r := range routeTable {
-		if r.pattern.MatchString(filePath) {
+		if r.pattern.MatchString(normalizedPath) {
 			return r.parser(filePath, content)
+		}
+	}
+	return nil
+}
+
+// RouteRejection creates a routed document carrying a stable parser rejection
+// reason without reading or retaining file content.
+func RouteRejection(filePath, reason string) *document.ConfigDocument {
+	if !validateFilePath(filePath) {
+		return nil
+	}
+	normalizedPath := strings.ReplaceAll(filePath, `\`, "/")
+	for _, r := range routeTable {
+		if r.pattern.MatchString(normalizedPath) {
+			doc := makeRejectionDoc(r.fileType, filePath, "", reason)
+			// The content was intentionally not read, so no content hash is known.
+			doc.ContentHash = ""
+			return doc
 		}
 	}
 	return nil

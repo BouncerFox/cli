@@ -1,0 +1,24 @@
+{
+  "enforcement": {
+    "block_on": ["critical", "high"]
+  },
+  "profile": {
+    "name": "recommended",
+    "disabled_rules": ["QA_005"]
+  },
+  "custom_rules": [
+    {
+      "rule_id": "CUSTOM_001",
+      "name": "No eval",
+      "severity": "high",
+      "description": "Reject eval usage",
+      "match_config": {
+        "type": "regex",
+        "pattern": "eval\\("
+      },
+      "file_types": ["skill_md"],
+      "schema_version": 1
+    }
+  ],
+  "rules_version": "phase1-contract"
+}

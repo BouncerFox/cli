@@ -401,6 +401,17 @@ func TestQA008_TooLarge(t *testing.T) {
 	}
 }
 
+func TestQA009_ContentTooLargeRejection(t *testing.T) {
+	doc := parser.RouteRejection("SKILL.md", parser.RejectionReasonContentTooLarge)
+	findings := CheckQA009(doc, defaultRC())
+	if len(findings) != 1 {
+		t.Fatalf("got %d findings, want 1", len(findings))
+	}
+	if findings[0].RuleID != "QA_009" || findings[0].Severity != document.SeverityHigh {
+		t.Errorf("unexpected finding: %+v", findings[0])
+	}
+}
+
 func TestQA008_SmallEnough(t *testing.T) {
 	content := strings.Repeat("a", 1024)
 	doc := &document.ConfigDocument{

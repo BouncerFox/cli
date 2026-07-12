@@ -1,12 +1,15 @@
 package config_test
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/bouncerfox/cli/pkg/config"
 	"github.com/bouncerfox/cli/pkg/document"
+	"github.com/bouncerfox/cli/pkg/engine"
 )
 
 // writeConfig writes content to .bouncerfox.yml in a temp dir and returns the dir.
@@ -17,6 +20,33 @@ func writeConfig(t *testing.T, content string) string {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStderr := os.Stderr
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = write
+	t.Cleanup(func() { os.Stderr = oldStderr })
+
+	fn()
+	if err := write.Close(); err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = oldStderr
+
+	output, err := io.ReadAll(read)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := read.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return string(output)
 }
 
 // TestDefaultConfig verifies the defaults when no config file is present.
@@ -62,6 +92,55 @@ func TestLoadConfig_YAMLExtension(t *testing.T) {
 	}
 	if cfg.Profile != "all_rules" {
 		t.Errorf("Profile = %q, want %q", cfg.Profile, "all_rules")
+	}
+}
+
+func TestLoadConfigFile_LoadsExactNamedFile(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".bouncerfox.yml"), []byte("profile: recommended\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	globalDir := t.TempDir()
+	t.Setenv("BOUNCERFOX_CONFIG_DIR", globalDir)
+	if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("severity_floor: critical\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "strict-policy.yml")
+	if err := os.WriteFile(path, []byte("profile: all_rules\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("LoadConfigFile: %v", err)
+	}
+	if cfg.Profile != config.ProfileAllRules {
+		t.Errorf("Profile = %q, want %q from exact file", cfg.Profile, config.ProfileAllRules)
+	}
+	if cfg.SeverityFloor != "" {
+		t.Errorf("SeverityFloor = %q, want empty because exact file skips global config", cfg.SeverityFloor)
+	}
+}
+
+func TestLoadConfigFile_MissingFileReturnsError(t *testing.T) {
+	_, err := config.LoadConfigFile(filepath.Join(t.TempDir(), "missing.yml"))
+	if err == nil {
+		t.Fatal("LoadConfigFile returned nil error for missing exact path")
+	}
+}
+
+func TestLoadConfigFile_EmptyFileDefaultsRecommended(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "empty.yml")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("LoadConfigFile: %v", err)
+	}
+	if cfg.Profile != config.ProfileRecommended {
+		t.Errorf("Profile = %q, want %q", cfg.Profile, config.ProfileRecommended)
 	}
 }
 
@@ -276,6 +355,46 @@ ignore:
 	}
 }
 
+func TestParseConfigBytes_LocalCustomRules(t *testing.T) {
+	cfg, err := config.ParseConfigBytes([]byte(`
+custom_rules:
+  - id: CUSTOM_001
+    name: No hardcoded model names
+    category: cfg
+    severity: warn
+    file_types: [claude_md, settings_json]
+    match:
+      type: line_pattern
+      pattern: 'gpt-4'
+    remediation: Use model aliases
+`))
+	if err != nil {
+		t.Fatalf("ParseConfigBytes: %v", err)
+	}
+	if len(cfg.CustomRules) != 1 {
+		t.Fatalf("CustomRules len = %d, want 1", len(cfg.CustomRules))
+	}
+	rule := cfg.CustomRules[0]
+	if rule.RuleID != "CUSTOM_001" {
+		t.Errorf("RuleID = %q, want CUSTOM_001", rule.RuleID)
+	}
+	if rule.Name != "No hardcoded model names" {
+		t.Errorf("Name = %q", rule.Name)
+	}
+	if rule.Severity != "warn" {
+		t.Errorf("Severity = %q, want warn", rule.Severity)
+	}
+	if rule.Description != "Use model aliases" {
+		t.Errorf("Description = %q, want remediation text", rule.Description)
+	}
+	if got := rule.MatchConfig["type"]; got != "line_pattern" {
+		t.Errorf("MatchConfig[type] = %#v, want line_pattern", got)
+	}
+	if len(rule.FileTypes) != 2 {
+		t.Errorf("FileTypes = %v, want two entries", rule.FileTypes)
+	}
+}
+
 // TestToScanOptions_SeverityFloor verifies SeverityFloor flows through to ScanOptions.
 func TestToScanOptions_SeverityFloor(t *testing.T) {
 	yaml := "severity_floor: high\n"
@@ -365,26 +484,36 @@ rules:
 	}
 }
 
-// TestSeverityFloorCriticalFloor verifies that CRITICAL rules cannot be
-// downgraded below HIGH via per-rule severity override.
-func TestSeverityFloorCriticalFloor(t *testing.T) {
-	yaml := `
-rules:
-  SEC_001:
-    severity: info
-`
-	dir := writeConfig(t, yaml)
-	cfg, err := config.LoadConfig(dir)
+func TestSeverityFloorRulesCannotBeDowngradedBelowHigh(t *testing.T) {
+	for _, ruleID := range []string{"SEC_001", "SEC_003", "SEC_004"} {
+		t.Run(ruleID, func(t *testing.T) {
+			yaml := "rules:\n  " + ruleID + ":\n    severity: info\n"
+			cfg, err := config.ParseConfigBytes([]byte(yaml))
+			if err != nil {
+				t.Fatalf("ParseConfigBytes: %v", err)
+			}
+			rc := cfg.Rules[ruleID]
+			if rc.Severity == nil {
+				t.Fatal("Severity should not be nil after clamping")
+			}
+			if *rc.Severity != document.SeverityHigh {
+				t.Errorf("Severity = %q, want %q", *rc.Severity, document.SeverityHigh)
+			}
+		})
+	}
+}
+
+func TestSeverityNonFloorCriticalRuleCanBeDowngraded(t *testing.T) {
+	cfg, err := config.ParseConfigBytes([]byte("rules:\n  SEC_009:\n    severity: info\n"))
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("ParseConfigBytes: %v", err)
 	}
-	rc := cfg.Rules["SEC_001"]
-	// The severity should have been clamped to high.
+	rc := cfg.Rules["SEC_009"]
 	if rc.Severity == nil {
-		t.Fatal("Severity should not be nil after clamping")
+		t.Fatal("Severity should not be nil")
 	}
-	if *rc.Severity != document.SeverityHigh {
-		t.Errorf("CRITICAL rule severity clamped to %q, want %q", *rc.Severity, document.SeverityHigh)
+	if *rc.Severity != document.SeverityInfo {
+		t.Errorf("Severity = %q, want %q for non-floor rule", *rc.Severity, document.SeverityInfo)
 	}
 }
 
@@ -468,8 +597,7 @@ func TestConfig_NoFloorBypasses(t *testing.T) {
 	}
 }
 
-func TestConfig_FloorProtectsAllSECRules(t *testing.T) {
-	// SEC_009 is not in the original floorRules map but should still be protected.
+func TestConfig_NonFloorSecurityRuleCanBeDisabled(t *testing.T) {
 	dir := writeConfig(t, "profile: all_rules\nrules:\n  SEC_009:\n    enabled: false\n")
 	cfg, err := config.LoadConfig(dir)
 	if err != nil {
@@ -480,8 +608,8 @@ func TestConfig_FloorProtectsAllSECRules(t *testing.T) {
 	for _, d := range opts.DisabledRules {
 		disabled[d] = true
 	}
-	if disabled["SEC_009"] {
-		t.Error("SEC_009 should not be disableable via config")
+	if !disabled["SEC_009"] {
+		t.Error("SEC_009 should be disableable because it is not a floor-protected rule")
 	}
 }
 
@@ -519,27 +647,25 @@ func TestConfig_FloorAllowsQADisable(t *testing.T) {
 	}
 }
 
-func TestConfig_FloorProtectsAllSECRules_Bulk(t *testing.T) {
-	// Disabling many SEC rules at once: all should be rejected.
-	secRules := []string{"SEC_001", "SEC_003", "SEC_004", "SEC_006", "SEC_009", "SEC_018"}
-	yamlStr := "profile: all_rules\nrules:\n"
-	for _, r := range secRules {
-		yamlStr += "  " + r + ":\n    enabled: false\n"
-	}
-	dir := writeConfig(t, yamlStr)
+func TestConfig_RecommendedKeepsSEC006DisabledWithoutFloorWarning(t *testing.T) {
+	dir := writeConfig(t, "profile: recommended\n")
 	cfg, err := config.LoadConfig(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := cfg.ToScanOptions()
+	var opts engine.ScanOptions
+	stderr := captureStderr(t, func() {
+		opts = cfg.ToScanOptions()
+	})
 	disabled := make(map[string]bool)
 	for _, d := range opts.DisabledRules {
 		disabled[d] = true
 	}
-	for _, r := range secRules {
-		if disabled[r] {
-			t.Errorf("SEC rule %s should not be disableable via config", r)
-		}
+	if !disabled["SEC_006"] {
+		t.Error("recommended profile should keep SEC_006 disabled")
+	}
+	if strings.Contains(stderr, "SEC_006") {
+		t.Errorf("ordinary recommended profile emitted SEC_006 floor warning: %q", stderr)
 	}
 }
 
@@ -554,6 +680,16 @@ func TestParseConfigBytes(t *testing.T) {
 	}
 	if cfg.Target != "github:test/repo" {
 		t.Errorf("expected target, got %q", cfg.Target)
+	}
+}
+
+func TestParseConfigBytes_EmptyDefaultsRecommended(t *testing.T) {
+	cfg, err := config.ParseConfigBytes(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Profile != config.ProfileRecommended {
+		t.Errorf("Profile = %q, want %q", cfg.Profile, config.ProfileRecommended)
 	}
 }
 
@@ -688,6 +824,28 @@ func TestMergeConfigs_RulesDeepMerge(t *testing.T) {
 	}
 }
 
+func TestMergeConfigs_CustomRulesProjectOverridesByID(t *testing.T) {
+	global := &config.Config{CustomRules: []config.CustomRuleConfig{
+		{RuleID: "CUSTOM_001", Name: "global definition"},
+		{RuleID: "CUSTOM_002", Name: "global only"},
+	}}
+	project := &config.Config{CustomRules: []config.CustomRuleConfig{
+		{RuleID: "CUSTOM_001", Name: "project definition"},
+		{RuleID: "CUSTOM_003", Name: "project only"},
+	}}
+
+	merged := config.MergeConfigs(global, project)
+	if len(merged.CustomRules) != 3 {
+		t.Fatalf("CustomRules len = %d, want 3", len(merged.CustomRules))
+	}
+	if merged.CustomRules[0].Name != "project definition" {
+		t.Errorf("duplicate rule was not replaced by project config: %+v", merged.CustomRules[0])
+	}
+	if merged.CustomRules[1].RuleID != "CUSTOM_002" || merged.CustomRules[2].RuleID != "CUSTOM_003" {
+		t.Errorf("CustomRules order/content = %+v", merged.CustomRules)
+	}
+}
+
 func TestMergeConfigs_ParamsReplacedWholesale(t *testing.T) {
 	global := &config.Config{Rules: map[string]config.RuleConfig{
 		"SEC_002": {Params: map[string]any{"url_allowlist": []string{"claude.com", "anthropic.com"}}},
@@ -707,6 +865,26 @@ func TestMergeConfigs_NilGlobal(t *testing.T) {
 	merged := config.MergeConfigs(nil, project)
 	if merged.Profile != "all_rules" {
 		t.Errorf("Profile = %q, want all_rules", merged.Profile)
+	}
+}
+
+func TestMergeConfigs_DefaultProfileDoesNotMutateInput(t *testing.T) {
+	project := &config.Config{Rules: make(map[string]config.RuleConfig)}
+	merged := config.MergeConfigs(nil, project)
+	if merged.Profile != config.ProfileRecommended {
+		t.Errorf("merged Profile = %q, want %q", merged.Profile, config.ProfileRecommended)
+	}
+	if project.Profile != "" {
+		t.Errorf("project Profile mutated to %q", project.Profile)
+	}
+
+	global := &config.Config{Rules: make(map[string]config.RuleConfig)}
+	merged = config.MergeConfigs(global, nil)
+	if merged.Profile != config.ProfileRecommended {
+		t.Errorf("merged Profile = %q, want %q", merged.Profile, config.ProfileRecommended)
+	}
+	if global.Profile != "" {
+		t.Errorf("global Profile mutated to %q", global.Profile)
 	}
 }
 
@@ -740,7 +918,7 @@ func TestLoadConfig_WithGlobalConfig(t *testing.T) {
 	globalDir := t.TempDir()
 	t.Setenv("BOUNCERFOX_CONFIG_DIR", globalDir)
 
-	if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("ignore:\n  - \"plugins/marketplaces/**\"\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("profile: all_rules\nignore:\n  - \"plugins/marketplaces/**\"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -758,6 +936,26 @@ func TestLoadConfig_WithGlobalConfig(t *testing.T) {
 	}
 	if !found {
 		t.Error("global ignore pattern should be present in merged config")
+	}
+	if cfg.Profile != config.ProfileAllRules {
+		t.Errorf("Profile = %q, want global profile %q", cfg.Profile, config.ProfileAllRules)
+	}
+}
+
+func TestLoadConfig_ProjectWithoutProfilePreservesGlobalProfile(t *testing.T) {
+	globalDir := t.TempDir()
+	t.Setenv("BOUNCERFOX_CONFIG_DIR", globalDir)
+	if err := os.WriteFile(filepath.Join(globalDir, "config.yml"), []byte("profile: all_rules\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	projectDir := writeConfig(t, "ignore:\n  - vendor/**\n")
+	cfg, err := config.LoadConfig(projectDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Profile != config.ProfileAllRules {
+		t.Errorf("Profile = %q, want inherited global profile %q", cfg.Profile, config.ProfileAllRules)
 	}
 }
 

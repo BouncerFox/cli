@@ -1,0 +1,27 @@
+{
+  "version": "1.0",
+  "cli_version": "0.9.0",
+  "cli_checksum": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "target": "github:acme/repo",
+  "target_label": "acme/repo",
+  "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+  "branch": "main",
+  "trigger": "ci",
+  "timestamp": "2026-06-19T12:00:00Z",
+  "duration_ms": 412,
+  "total_files": 12,
+  "scanned_files": 3,
+  "profile": "recommended",
+  "config_hash": "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+  "findings": [
+    {
+      "rule_id": "SEC_001",
+      "severity": "critical",
+      "message": "Hardcoded secret found",
+      "file": ".claude/settings.json",
+      "line": 8,
+      "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "remediation": "Remove the secret and rotate credentials."
+    }
+  ]
+}

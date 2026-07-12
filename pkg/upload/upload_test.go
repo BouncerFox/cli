@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/bouncerfox/cli/pkg/document"
+	"github.com/bouncerfox/cli/pkg/fingerprint"
 )
 
 // sampleFindings provides a small set of findings used across tests.
@@ -43,6 +44,24 @@ func TestPayload_FindingShape(t *testing.T) {
 	}
 	if first.Line != 5 {
 		t.Errorf("expected line 5, got %d", first.Line)
+	}
+}
+
+func TestPayload_ComputesFindingFingerprint(t *testing.T) {
+	finding := document.ScanFinding{
+		RuleID:   "SEC_001",
+		Severity: document.SeverityCritical,
+		Message:  "hardcoded secret",
+		Evidence: map[string]any{
+			"file":    "path/to/CLAUDE.md",
+			"line":    5,
+			"snippet": "token pattern",
+		},
+	}
+
+	wire := BuildWireFindings([]document.ScanFinding{finding}, false, false)
+	if got, want := wire[0].Fingerprint, fingerprint.ComputeFingerprint(finding); got != want {
+		t.Errorf("fingerprint = %q, want engine fingerprint %q", got, want)
 	}
 }
 
@@ -311,5 +330,28 @@ func TestExtractSkillMetadata_EmptyInput(t *testing.T) {
 	}
 	if skills := ExtractSkillMetadata([]*document.ConfigDocument{}); len(skills) != 0 {
 		t.Errorf("expected 0 skills for empty input, got %d", len(skills))
+	}
+}
+
+func TestExtractSkillMetadata_IncludesContentHash(t *testing.T) {
+	docs := []*document.ConfigDocument{{
+		FileType:    document.FileTypeSkillMD,
+		FilePath:    ".claude/skills/reviewer/SKILL.md",
+		ContentHash: strings.Repeat("a", 64),
+		Parsed: map[string]any{
+			"frontmatter": map[string]any{
+				"name":        "reviewer",
+				"description": "Review code changes",
+				"status":      "stable",
+				"model":       "gpt-5",
+			},
+		},
+	}}
+	got := ExtractSkillMetadata(docs)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 skill, got %d", len(got))
+	}
+	if got[0].ContentHash != strings.Repeat("a", 64) {
+		t.Fatalf("expected content hash to round-trip, got %q", got[0].ContentHash)
 	}
 }

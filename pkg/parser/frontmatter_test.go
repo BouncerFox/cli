@@ -80,6 +80,59 @@ func TestParseFrontmatterMD_Basic(t *testing.T) {
 	}
 }
 
+func TestParseFrontmatterMD_CRLF(t *testing.T) {
+	lfContent := "---\nname: example\ndescription: CRLF fixture\n---\n# Body\nText\n"
+	crlfContent := strings.ReplaceAll(lfContent, "\n", "\r\n")
+
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", crlfContent)
+	if doc.Parsed["_parse_error"] == true {
+		t.Fatalf("CRLF frontmatter should parse successfully: %v", doc.Parsed)
+	}
+	if doc.Content != lfContent {
+		t.Errorf("Content = %q, want canonical LF content %q", doc.Content, lfContent)
+	}
+
+	fm, ok := doc.Parsed["frontmatter"].(map[string]any)
+	if !ok {
+		t.Fatal("frontmatter not found or wrong type")
+	}
+	if fm["name"] != "example" {
+		t.Errorf("name = %v, want example", fm["name"])
+	}
+	if fm["description"] != "CRLF fixture" {
+		t.Errorf("description = %v, want CRLF fixture", fm["description"])
+	}
+	if body, _ := doc.Parsed["body"].(string); body != "# Body\nText\n" {
+		t.Errorf("body = %q, want canonical LF body", body)
+	}
+	if lines, _ := doc.Parsed["frontmatter_lines"].(map[string]int); lines["description"] != 3 {
+		t.Errorf("frontmatter_lines[description] = %d, want 3", lines["description"])
+	}
+
+	lfDoc := ParseFrontmatterMD("skill_md", "SKILL.md", lfContent)
+	if doc.ContentHash != lfDoc.ContentHash {
+		t.Errorf("ContentHash differs by line-ending style: CRLF %q, LF %q", doc.ContentHash, lfDoc.ContentHash)
+	}
+}
+
+func TestParseFrontmatterMD_CRLFYAMLReferenceRejected(t *testing.T) {
+	content := "---\r\nitems: [&item value, *item]\r\n---\r\nBody\r\n"
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
+
+	if doc.Parsed["_parse_error"] != true {
+		t.Fatal("expected YAML reference in CRLF frontmatter to be rejected")
+	}
+	if reason, _ := doc.Parsed["_reason"].(string); reason != RejectionReasonYAMLReferences {
+		t.Errorf("_reason = %q, want %q", reason, RejectionReasonYAMLReferences)
+	}
+	if line, _ := doc.Parsed["_rejection_line"].(int); line != 2 {
+		t.Errorf("_rejection_line = %d, want 2", line)
+	}
+	if strings.Contains(doc.Content, "\r") {
+		t.Errorf("Content contains a carriage return after normalization: %q", doc.Content)
+	}
+}
+
 func TestParseFrontmatterMD_NoFrontmatter(t *testing.T) {
 	content := readFixture(t, "../../testdata/skills/no-frontmatter.md")
 	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
@@ -129,7 +182,7 @@ func TestParseFrontmatterMD_BinaryContent(t *testing.T) {
 }
 
 func TestParseFrontmatterMD_OversizedContent(t *testing.T) {
-	huge := "---\nname: test\n---\n" + strings.Repeat("A", 600*1024)
+	huge := "---\nname: test\n---\n" + strings.Repeat("A", MaxContentSize)
 	doc := ParseFrontmatterMD("skill_md", "SKILL.md", huge)
 	if doc.Parsed["_parse_error"] != true {
 		t.Error("expected parse error for oversized content")
@@ -137,6 +190,13 @@ func TestParseFrontmatterMD_OversizedContent(t *testing.T) {
 	reason, _ := doc.Parsed["_reason"].(string)
 	if reason != "content_too_large" {
 		t.Errorf("expected reason content_too_large, got %q", reason)
+	}
+}
+
+func TestParseClaudeMD_ContentAtLimit(t *testing.T) {
+	doc := ParseClaudeMD("CLAUDE.md", strings.Repeat("A", MaxContentSize))
+	if doc.Parsed["_parse_error"] == true {
+		t.Errorf("content at the 1 MB limit should be accepted: %v", doc.Parsed)
 	}
 }
 
@@ -159,6 +219,9 @@ func TestParseFrontmatterMD_MalformedYAML(t *testing.T) {
 	if doc.Parsed["_parse_error"] != true {
 		t.Error("expected parse error for malformed YAML")
 	}
+	if reason, _ := doc.Parsed["_reason"].(string); reason != "invalid_yaml" {
+		t.Errorf("_reason = %q, want invalid_yaml", reason)
+	}
 }
 
 func TestParseFrontmatterMD_YAMLMergeKey(t *testing.T) {
@@ -166,6 +229,80 @@ func TestParseFrontmatterMD_YAMLMergeKey(t *testing.T) {
 	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
 	if doc.Parsed["_parse_error"] != true {
 		t.Error("expected parse error for YAML merge key (uses anchors)")
+	}
+}
+
+func TestParseFrontmatterMD_RejectsAdversarialYAMLReferences(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		line int
+	}{
+		{
+			name: "sequence anchor and alias",
+			yaml: "items:\n  - &defaults\n    key: value\n  - *defaults",
+			line: 3,
+		},
+		{
+			name: "flow anchor and alias",
+			yaml: "items: [&item value, *item]",
+			line: 2,
+		},
+		{
+			name: "hyphenated anchor with merge alias",
+			yaml: "base-config: &base\n  key: value\nmerged:\n  <<: *base",
+			line: 2,
+		},
+		{
+			name: "merge key with inline mapping",
+			yaml: "merged:\n  <<: {key: value}",
+			line: 3,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			content := "---\n" + tt.yaml + "\n---\nBody"
+			doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
+			if doc.Parsed["_parse_error"] != true {
+				t.Fatal("expected YAML reference to be rejected")
+			}
+			if reason, _ := doc.Parsed["_reason"].(string); reason != "yaml_anchors" {
+				t.Errorf("_reason = %q, want yaml_anchors", reason)
+			}
+			if line, _ := doc.Parsed["_rejection_line"].(int); line != tt.line {
+				t.Errorf("_rejection_line = %d, want %d", line, tt.line)
+			}
+		})
+	}
+}
+
+func TestParseFrontmatterMD_ReferenceParseErrorsUseSecurityReason(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{name: "undefined alias", yaml: "value: *missing"},
+		{name: "self-referential anchor", yaml: "value: &self\n  nested: *self"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := ParseFrontmatterMD("skill_md", "SKILL.md", "---\n"+tt.yaml+"\n---\nBody")
+			if doc.Parsed["_parse_error"] != true {
+				t.Fatal("expected YAML reference to be rejected")
+			}
+			if reason, _ := doc.Parsed["_reason"].(string); reason != RejectionReasonYAMLReferences {
+				t.Errorf("_reason = %q, want %q", reason, RejectionReasonYAMLReferences)
+			}
+		})
+	}
+}
+
+func TestParseFrontmatterMD_YAMLReferenceSyntaxInsideScalarIsAllowed(t *testing.T) {
+	content := "---\nname: example\n\"<<\": literal key\ndescription: |\n  key: &literal\n  alias: *literal\n---\nBody"
+	doc := ParseFrontmatterMD("skill_md", "SKILL.md", content)
+	if doc.Parsed["_parse_error"] == true {
+		t.Errorf("reference-like scalar text must not be rejected: %v", doc.Parsed)
 	}
 }
 

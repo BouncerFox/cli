@@ -333,6 +333,26 @@ func TestFormatSARIF_ToolDriver(t *testing.T) {
 	}
 }
 
+func TestFormatSARIF_ToolDriverUsesCLIVersion(t *testing.T) {
+	var buf bytes.Buffer
+	if err := output.FormatSARIFWithVersion(testFindings, &buf, "v0.8.1"); err != nil {
+		t.Fatalf("FormatSARIFWithVersion returned error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("SARIF output is not valid JSON: %v", err)
+	}
+	runs := result["runs"].([]any)
+	run := runs[0].(map[string]any)
+	tool := run["tool"].(map[string]any)
+	driver := tool["driver"].(map[string]any)
+
+	if driver["version"] != "v0.8.1" {
+		t.Errorf("expected driver version v0.8.1, got %v", driver["version"])
+	}
+}
+
 func TestFormatSARIF_Results(t *testing.T) {
 	var buf bytes.Buffer
 	_ = output.FormatSARIF(testFindings, &buf)
@@ -411,6 +431,36 @@ func TestFormatSARIF_LocationURI(t *testing.T) {
 	region := pl["region"].(map[string]any)
 	if int(region["startLine"].(float64)) != 5 {
 		t.Errorf("expected startLine 5, got %v", region["startLine"])
+	}
+}
+
+func TestFormatSARIF_LocationURIIsPortable(t *testing.T) {
+	finding := document.ScanFinding{
+		RuleID:   "QA_001",
+		Severity: document.SeverityWarn,
+		Message:  "portable path",
+		Evidence: map[string]any{
+			"file": `.claude\skills\my skill\SKILL.md`,
+			"line": 2,
+		},
+	}
+	var buf bytes.Buffer
+	if err := output.FormatSARIF([]document.ScanFinding{finding}, &buf); err != nil {
+		t.Fatalf("FormatSARIF returned error: %v", err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &result); err != nil {
+		t.Fatalf("SARIF output is not valid JSON: %v", err)
+	}
+	runs := result["runs"].([]any)
+	run := runs[0].(map[string]any)
+	results := run["results"].([]any)
+	locations := results[0].(map[string]any)["locations"].([]any)
+	physical := locations[0].(map[string]any)["physicalLocation"].(map[string]any)
+	artifact := physical["artifactLocation"].(map[string]any)
+	if got := artifact["uri"]; got != ".claude/skills/my%20skill/SKILL.md" {
+		t.Errorf("artifact URI = %v, want portable relative URI", got)
 	}
 }
 

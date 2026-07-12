@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/bouncerfox/cli/pkg/document"
@@ -22,9 +23,18 @@ var maskedRules = map[string]bool{
 // finding line. If the file is missing or the line is out of range, it
 // silently does nothing.
 func writeCodeFrame(w io.Writer, rm renderMode, f document.ScanFinding) {
+	writeCodeFrameAtRoot(w, rm, f, "")
+}
+
+func writeCodeFrameAtRoot(w io.Writer, rm renderMode, f document.ScanFinding, scanRoot string) {
 	file, line := evidenceFileAndLine(f.Evidence)
 	if file == "" || line <= 0 {
 		return
+	}
+	if f.SourcePath != "" {
+		file = f.SourcePath
+	} else if scanRoot != "" && !isPortableAbs(file) {
+		file = filepath.Join(scanRoot, filepath.FromSlash(strings.ReplaceAll(file, `\`, "/")))
 	}
 
 	lines, err := readFileLines(file)
@@ -56,6 +66,14 @@ func writeCodeFrame(w io.Writer, rm renderMode, f document.ScanFinding) {
 		_, _ = fmt.Fprintf(w, "%s %*d  %s\n", rm.boxLine(), gutterWidth, i, content)
 	}
 	_, _ = fmt.Fprintln(w, rm.boxBottom())
+}
+
+func isPortableAbs(path string) bool {
+	path = strings.ReplaceAll(path, `\`, "/")
+	if strings.HasPrefix(path, "/") {
+		return true
+	}
+	return len(path) >= 3 && path[1] == ':' && path[2] == '/'
 }
 
 func readFileLines(path string) ([]string, error) {

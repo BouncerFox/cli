@@ -49,6 +49,7 @@ const (
 type ConfigDocument struct {
 	FileType    string
 	FilePath    string
+	SourcePath  string
 	Content     string
 	Parsed      map[string]any
 	ContentHash string
@@ -60,6 +61,9 @@ type ScanFinding struct {
 	Message     string
 	Evidence    map[string]any
 	Remediation string
+	// SourcePath is the local source file used for display-only features such as
+	// verbose code frames. Wire/output formatters intentionally ignore it.
+	SourcePath string `json:"-"`
 }
 
 // RuleContext carries per-scan state to check functions.

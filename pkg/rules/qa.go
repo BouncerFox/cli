@@ -62,7 +62,12 @@ func CheckQA002(doc *document.ConfigDocument, rc *document.RuleContext) []docume
 		return nil
 	}
 
-	m := skillNameFromPathRe.FindStringSubmatch(doc.FilePath)
+	structuralPath := doc.SourcePath
+	if structuralPath == "" {
+		structuralPath = doc.FilePath
+	}
+	structuralPath = strings.ReplaceAll(structuralPath, `\`, "/")
+	m := skillNameFromPathRe.FindStringSubmatch(structuralPath)
 	if m == nil {
 		return nil
 	}
@@ -297,7 +302,7 @@ func CheckQA009(doc *document.ConfigDocument, rc *document.RuleContext) []docume
 		return nil
 	}
 	reason, _ := doc.Parsed["_reason"].(string)
-	if reason != "content_too_large" {
+	if reason != parser.RejectionReasonContentTooLarge {
 		return nil
 	}
 	return []document.ScanFinding{{

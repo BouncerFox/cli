@@ -53,6 +53,7 @@ func TestSanitizeForDisplay_InvalidUTF8(t *testing.T) {
 }
 
 func TestRenderMode_NoColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
 	rm := resolveRenderMode(true, false)
 	if rm.colors {
 		t.Error("colors should be off with noColor=true")
@@ -63,6 +64,7 @@ func TestRenderMode_NoColor(t *testing.T) {
 }
 
 func TestRenderMode_TTY(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
 	rm := resolveRenderMode(false, true)
 	if !rm.colors {
 		t.Error("colors should be on for TTY")
@@ -73,6 +75,7 @@ func TestRenderMode_TTY(t *testing.T) {
 }
 
 func TestRenderMode_Piped(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
 	rm := resolveRenderMode(false, false)
 	if rm.colors {
 		t.Error("colors should be off when piped")

@@ -42,6 +42,20 @@ func TestFormatTable_GroupedByFile(t *testing.T) {
 	}
 }
 
+func TestRelPath_PreservesRelativeEvidencePath(t *testing.T) {
+	got := relPath("/checkout/root", `.claude\skills\example\SKILL.md`)
+	if got != ".claude/skills/example/SKILL.md" {
+		t.Errorf("relPath returned %q", got)
+	}
+}
+
+func TestRelPath_WindowsRoot(t *testing.T) {
+	got := relPath(`C:\checkout\root`, `C:\checkout\root\.claude\skills\example\SKILL.md`)
+	if got != ".claude/skills/example/SKILL.md" {
+		t.Errorf("relPath returned %q", got)
+	}
+}
+
 func TestFormatTable_CleanScan(t *testing.T) {
 	var buf bytes.Buffer
 	opts := FormatOptions{Stats: ScanStats{FilesScanned: 10, RulesRun: 34, Duration: 15 * time.Millisecond}}
@@ -284,6 +298,7 @@ func TestFormatTable_UnknownFileInSeverityMode(t *testing.T) {
 }
 
 func TestFormatTable_SeverityColoredSummary(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
 	findings := []document.ScanFinding{
 		{RuleID: "SEC_001", Severity: "critical", Message: "test",
 			Evidence: map[string]any{"file": "f.md", "line": 1}},
@@ -305,6 +320,7 @@ func TestFormatTable_SeverityColoredSummary(t *testing.T) {
 }
 
 func TestFormatTable_SeverityColoredSummary_NoColor(t *testing.T) {
+	t.Setenv("NO_COLOR", "")
 	findings := []document.ScanFinding{
 		{RuleID: "SEC_001", Severity: "critical", Message: "test",
 			Evidence: map[string]any{"file": "f.md", "line": 1}},

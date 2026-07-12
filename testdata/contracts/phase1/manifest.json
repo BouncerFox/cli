@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "fixtures": {
+    "config-pull-request.json": "sha256:e98f954e62e08be7b7250071d6e154b7aab319e75712496c26208c22c060ab38",
+    "config-pull-response.json": "sha256:4d4c735173d0ffed25c0ae6da7b617d9d262f90ce1991bbfb39ab33e9479c7c8",
+    "error-401.json": "sha256:ea10f50f1f23236152b2215fbdf23dbd03eb26a9418434454441586309c8d6fb",
+    "error-402.json": "sha256:f08a6481c7d20252bd365324b71f8c33755f8fbde5e9aa9737947d744d0115b9",
+    "error-403.json": "sha256:97df54f76ae40de62609291012fab1130cd79fd110d6ce27d2657e1044b7b4ed",
+    "error-409.json": "sha256:481b2909be1e73b6c697c5fe90847c68b9ab292be9cc0b4cac440a38f4f60491",
+    "error-422.json": "sha256:8e30b4d5f37e04d6f97f97deefbb23f14138578dd6d914b37be606b7ed2bda82",
+    "skill-metadata-with-content-hash.json": "sha256:854e16128190d531023951e3d4a659799576d39f19ad469813f8acf3a678bd27",
+    "upload-request-builtins.json": "sha256:2e10914815149d94228a679c388371fc1cb2866f9eb772876223ed4a360fba99",
+    "upload-request-custom-rule.json": "sha256:4d698f735d32b199c20a168aee04c8420facc43e13a4c7fb368f7c01f2de8f49",
+    "upload-request-local.json": "sha256:18b92e17ee3d8f227a462457110ea3748b7b129480a6fd5c47f4300dd49673c0",
+    "upload-request-pr.json": "sha256:46175099a601296c15065feb41d422b6fadd63d7b4d89a2ebd79b183654beb16",
+    "upload-request-privacy-mode.json": "sha256:6578f10eabd18ca50102ddcc9c407c832e42a00d785c8d2d3908a5e3ddc81ea9",
+    "upload-verdict-fail.json": "sha256:04afd167b025010b546f9a9c0d01c38cf51a5467f6d5eba3a775fb242e322e0a",
+    "upload-verdict-informational.json": "sha256:d48ca7415ab5bd2ba94f37154fc85c27f6b56fc0cc3cc20edd77b9424b0708e6",
+    "upload-verdict-pass.json": "sha256:9e46bf87d482ed47e55926813a59f627761ad4d0b0890fd69027cb262457252d",
+    "upload-verdict-warn.json": "sha256:07fc30770f8f268c93c025841a39d87c74457ddfebc08df0e560366c1a296289"
+  }
+}

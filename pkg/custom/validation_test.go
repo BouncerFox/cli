@@ -19,6 +19,20 @@ func TestValidate_MinimalValid(t *testing.T) {
 	}
 }
 
+func TestValidate_DocumentedCustomID(t *testing.T) {
+	rule := map[string]any{
+		"id":       "CUSTOM_001",
+		"severity": "warn",
+		"match": map[string]any{
+			"type":  "content_contains",
+			"value": "TODO",
+		},
+	}
+	if err := Validate(rule); err != nil {
+		t.Fatalf("documented CUSTOM_001 ID should be valid: %v", err)
+	}
+}
+
 func TestValidate_MissingID(t *testing.T) {
 	rule := map[string]any{
 		"severity": "warn",
@@ -85,15 +99,26 @@ func TestValidate_MissingMatch(t *testing.T) {
 	}
 }
 
+func TestValidate_EmptyMatch(t *testing.T) {
+	rule := map[string]any{
+		"id":       "CUSTOM_001",
+		"severity": "warn",
+		"match":    map[string]any{},
+	}
+	if err := Validate(rule); err == nil || !strings.Contains(err.Error(), "must not be empty") {
+		t.Fatalf("expected empty-match error, got %v", err)
+	}
+}
+
 func TestValidate_InvalidIDFormat(t *testing.T) {
 	cases := []string{
-		"cust_001",   // lowercase
-		"CUST001",    // no underscore
-		"C_001",      // too few letters
-		"ABCDEF_001", // too many letters
-		"CUST_01",    // too few digits
-		"CUST_0001",  // too many digits
-		"",           // empty
+		"cust_001",    // lowercase
+		"CUST001",     // no underscore
+		"C_001",       // too few letters
+		"ABCDEFG_001", // too many letters
+		"CUST_01",     // too few digits
+		"CUST_0001",   // too many digits
+		"",            // empty
 	}
 	for _, id := range cases {
 		rule := map[string]any{

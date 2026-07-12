@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -23,8 +24,19 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 
-	binaryPath = filepath.Join(tmp, "bouncerfox")
-	build := exec.CommandContext(context.Background(), "go", "build", "-tags", "enable_platform", "-o", binaryPath, "./")
+	binaryName := "bouncerfox"
+	if runtime.GOOS == "windows" {
+		binaryName += ".exe"
+	}
+	binaryPath = filepath.Join(tmp, binaryName)
+	build := exec.CommandContext(
+		context.Background(),
+		"go", "build",
+		"-tags", "enable_platform",
+		"-ldflags", "-X main.version=test-version",
+		"-o", binaryPath,
+		"./",
+	)
 	build.Dir = "."
 	if out, err := build.CombinedOutput(); err != nil {
 		panic("build failed: " + string(out))
@@ -54,10 +66,231 @@ func runBinary(t *testing.T, args []string, env ...string) (stdout, stderr strin
 	return outBuf.String(), errBuf.String(), exitCode
 }
 
+type cliJSONFinding struct {
+	RuleID      string `json:"rule_id"`
+	Fingerprint string `json:"fingerprint"`
+	Evidence    struct {
+		File string `json:"file"`
+	} `json:"evidence"`
+}
+
+func decodeCLIJSONFindings(t *testing.T, raw string) []cliJSONFinding {
+	t.Helper()
+	var output struct {
+		Findings []cliJSONFinding `json:"findings"`
+	}
+	if err := json.Unmarshal([]byte(raw), &output); err != nil {
+		t.Fatalf("decoding scan output: %v\n%s", err, raw)
+	}
+	return output.Findings
+}
+
+func findingForRule(t *testing.T, findings []cliJSONFinding, ruleID string) cliJSONFinding {
+	t.Helper()
+	for _, finding := range findings {
+		if finding.RuleID == ruleID {
+			return finding
+		}
+	}
+	t.Fatalf("finding for %s not present: %+v", ruleID, findings)
+	return cliJSONFinding{}
+}
+
 func TestSmoke_ScanClean(t *testing.T) {
 	_, _, code := runBinary(t, []string{"scan", "testdata/clean-skill"})
 	if code != 0 {
 		t.Errorf("scan clean-skill: expected exit 0, got %d", code)
+	}
+}
+
+func TestScan_FingerprintsStableAcrossCheckoutRoots(t *testing.T) {
+	const relativeSkillPath = ".claude/skills/sample/SKILL.md"
+	const skill = `---
+name: sample
+description: A documented skill used to verify checkout-independent fingerprints.
+---
+api_key: 0123456789abcdef0123456789abcdef
+`
+
+	scanCheckout := func(t *testing.T) cliJSONFinding {
+		t.Helper()
+		root := t.TempDir()
+		skillPath := filepath.Join(root, filepath.FromSlash(relativeSkillPath))
+		if err := os.MkdirAll(filepath.Dir(skillPath), 0o700); err != nil {
+			t.Fatalf("creating skill directory: %v", err)
+		}
+		if err := os.WriteFile(skillPath, []byte(skill), 0o600); err != nil {
+			t.Fatalf("writing skill: %v", err)
+		}
+
+		stdout, stderr, code := runBinary(t, []string{"scan", root, "--format", "json"})
+		if code != 1 {
+			t.Fatalf("expected secret finding exit 1, got %d: %s", code, stderr)
+		}
+		return findingForRule(t, decodeCLIJSONFindings(t, stdout), "SEC_001")
+	}
+
+	first := scanCheckout(t)
+	second := scanCheckout(t)
+	if first.Evidence.File != relativeSkillPath {
+		t.Errorf("evidence file = %q, want %q", first.Evidence.File, relativeSkillPath)
+	}
+	if second.Evidence.File != relativeSkillPath {
+		t.Errorf("second evidence file = %q, want %q", second.Evidence.File, relativeSkillPath)
+	}
+	if first.Fingerprint != second.Fingerprint {
+		t.Errorf("fingerprints differ across checkout roots: %q != %q", first.Fingerprint, second.Fingerprint)
+	}
+}
+
+func TestScan_MultipleRootsNamespaceIdenticalFindings(t *testing.T) {
+	workspace := t.TempDir()
+	const relativeSkillPath = ".claude/skills/sample/SKILL.md"
+	const skill = "---\nname: sample\ndescription: A documented multi-root fingerprint regression skill.\n---\napi_key: 0123456789abcdef0123456789abcdef\n"
+
+	roots := []string{filepath.Join(workspace, "dir-a"), filepath.Join(workspace, "dir-b")}
+	for _, root := range roots {
+		skillPath := filepath.Join(root, filepath.FromSlash(relativeSkillPath))
+		if err := os.MkdirAll(filepath.Dir(skillPath), 0o700); err != nil {
+			t.Fatalf("creating skill directory: %v", err)
+		}
+		if err := os.WriteFile(skillPath, []byte(skill), 0o600); err != nil {
+			t.Fatalf("writing skill: %v", err)
+		}
+	}
+
+	stdout, stderr, code := runBinary(t, []string{"scan", roots[0], roots[1], "--format", "json"})
+	if code != 1 {
+		t.Fatalf("expected findings exit 1, got %d: %s", code, stderr)
+	}
+
+	paths := make(map[string]bool)
+	fingerprints := make(map[string]bool)
+	for _, finding := range decodeCLIJSONFindings(t, stdout) {
+		if finding.RuleID != "SEC_001" {
+			continue
+		}
+		paths[finding.Evidence.File] = true
+		fingerprints[finding.Fingerprint] = true
+	}
+	wantPaths := []string{
+		"dir-a/" + relativeSkillPath,
+		"dir-b/" + relativeSkillPath,
+	}
+	for _, want := range wantPaths {
+		if !paths[want] {
+			t.Errorf("missing evidence path %q; got %v", want, paths)
+		}
+	}
+	if len(paths) != 2 {
+		t.Errorf("SEC_001 evidence paths = %v, want two distinct paths", paths)
+	}
+	if len(fingerprints) != 2 {
+		t.Errorf("SEC_001 fingerprints = %v, want two distinct fingerprints", fingerprints)
+	}
+}
+
+func TestScan_SingleFileRootUsesBasenameAndStructuralRoute(t *testing.T) {
+	settingsPath := filepath.Join(t.TempDir(), ".claude", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(settingsPath), 0o700); err != nil {
+		t.Fatalf("creating settings directory: %v", err)
+	}
+	if err := os.WriteFile(settingsPath, []byte(`{"allowedTools":["Bash"]}`), 0o600); err != nil {
+		t.Fatalf("writing settings: %v", err)
+	}
+
+	stdout, stderr, code := runBinary(t, []string{"scan", settingsPath, "--format", "json"})
+	if code != 1 {
+		t.Fatalf("expected settings finding exit 1, got %d: %s", code, stderr)
+	}
+	finding := findingForRule(t, decodeCLIJSONFindings(t, stdout), "CFG_001")
+	if finding.Evidence.File != "settings.json" {
+		t.Errorf("evidence file = %q, want settings.json", finding.Evidence.File)
+	}
+}
+
+func TestScan_DirectSkillFilePreservesQA002StructuralContext(t *testing.T) {
+	skillPath := filepath.Join(t.TempDir(), ".claude", "skills", "expected-name", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0o700); err != nil {
+		t.Fatalf("creating skill directory: %v", err)
+	}
+	content := "---\nname: wrong-name\ndescription: A documented skill with a deliberately mismatched directory name.\n---\nBody\n"
+	if err := os.WriteFile(skillPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("writing skill: %v", err)
+	}
+
+	stdout, stderr, code := runBinary(t, []string{"scan", skillPath, "--format", "json"})
+	if code != 1 {
+		t.Fatalf("expected QA_002 finding exit 1, got %d: %s", code, stderr)
+	}
+	finding := findingForRule(t, decodeCLIJSONFindings(t, stdout), "QA_002")
+	if finding.Evidence.File != "SKILL.md" {
+		t.Errorf("evidence file = %q, want SKILL.md", finding.Evidence.File)
+	}
+}
+
+func TestScan_SymlinkedDirectoryRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("directory symlinks require privileges on Windows")
+	}
+
+	workspace := t.TempDir()
+	realRoot := filepath.Join(workspace, "real-checkout")
+	skillPath := filepath.Join(realRoot, ".claude", "skills", "sample", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0o700); err != nil {
+		t.Fatalf("creating skill directory: %v", err)
+	}
+	if err := os.WriteFile(skillPath, []byte("---\nname: sample\ndescription: A documented symlink-root regression skill.\n---\napi_key: 0123456789abcdef0123456789abcdef\n"), 0o600); err != nil {
+		t.Fatalf("writing skill: %v", err)
+	}
+
+	linkedRoot := filepath.Join(workspace, "linked-checkout")
+	if err := os.Symlink(realRoot, linkedRoot); err != nil {
+		t.Skipf("creating directory symlink: %v", err)
+	}
+
+	stdout, stderr, code := runBinary(t, []string{"scan", linkedRoot, "--format", "json"})
+	if code != 1 {
+		t.Fatalf("expected symlinked-root finding exit 1, got %d: %s", code, stderr)
+	}
+	finding := findingForRule(t, decodeCLIJSONFindings(t, stdout), "SEC_001")
+	if finding.Evidence.File != ".claude/skills/sample/SKILL.md" {
+		t.Errorf("evidence file = %q, want relative path", finding.Evidence.File)
+	}
+}
+
+func TestScan_RejectsChildSymlinkEscape(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file symlinks require privileges on Windows")
+	}
+
+	workspace := t.TempDir()
+	root := filepath.Join(workspace, "scan-root")
+	outside := filepath.Join(workspace, "outside")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatalf("creating scan root: %v", err)
+	}
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatalf("creating outside directory: %v", err)
+	}
+	outsideSkill := filepath.Join(outside, "SKILL.md")
+	if err := os.WriteFile(outsideSkill, []byte("---\nname: escaped\ndescription: This file must remain outside the scan root.\n---\napi_key: 0123456789abcdef0123456789abcdef\n"), 0o600); err != nil {
+		t.Fatalf("writing outside skill: %v", err)
+	}
+	linkedSkill := filepath.Join(root, "SKILL.md")
+	if err := os.Symlink(outsideSkill, linkedSkill); err != nil {
+		t.Skipf("creating file symlink: %v", err)
+	}
+
+	stdout, stderr, code := runBinary(t, []string{"scan", root, "--format", "json"})
+	if code != 0 {
+		t.Fatalf("expected escaped child to be skipped with exit 0, got %d: %s", code, stderr)
+	}
+	if findings := decodeCLIJSONFindings(t, stdout); len(findings) != 0 {
+		t.Fatalf("escaped child produced findings: %+v", findings)
+	}
+	if !strings.Contains(stderr, "resolves outside scan root") {
+		t.Errorf("stderr missing escape warning: %s", stderr)
 	}
 }
 
@@ -177,6 +410,70 @@ func TestScan_BadSkill_SARIFFormat(t *testing.T) {
 	if _, ok := sarif["runs"]; !ok {
 		t.Error("SARIF output missing runs")
 	}
+	runs, ok := sarif["runs"].([]any)
+	if !ok || len(runs) == 0 {
+		t.Fatal("SARIF output has no runs")
+	}
+	run, ok := runs[0].(map[string]any)
+	if !ok {
+		t.Fatal("SARIF run has unexpected shape")
+	}
+	tool, ok := run["tool"].(map[string]any)
+	if !ok {
+		t.Fatal("SARIF run is missing tool metadata")
+	}
+	driver, ok := tool["driver"].(map[string]any)
+	if !ok {
+		t.Fatal("SARIF tool is missing driver metadata")
+	}
+	if got := driver["version"]; got != "test-version" {
+		t.Errorf("SARIF driver version = %v, want test-version", got)
+	}
+}
+
+func TestScan_RejectsInvalidValues(t *testing.T) {
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "custom-scan-config.yml")
+	if err := os.WriteFile(configPath, []byte("profile: strict\n"), 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr string
+	}{
+		{
+			name:    "output format",
+			args:    []string{"scan", "testdata/clean-skill", "--format", "xml"},
+			wantErr: `unknown output format "xml": must be one of table, json, sarif`,
+		},
+		{
+			name:    "profile",
+			args:    []string{"scan", "testdata/clean-skill", "--config", configPath},
+			wantErr: `unknown profile "strict": must be one of recommended, all_rules`,
+		},
+		{
+			name:    "offline behavior",
+			args:    []string{"scan", "testdata/clean-skill", "--offline-behavior", "ignore"},
+			wantErr: `unknown offline behavior "ignore": must be one of warn, fail-closed`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stdout, stderr, code := runBinary(t, tt.args)
+			if code != 2 {
+				t.Errorf("expected exit 2, got %d", code)
+			}
+			if stdout != "" {
+				t.Errorf("expected no scan output, got %q", stdout)
+			}
+			if !strings.Contains(stderr, tt.wantErr) {
+				t.Errorf("stderr should contain %q, got %q", tt.wantErr, stderr)
+			}
+		})
+	}
 }
 
 func TestScan_SeverityFilter(t *testing.T) {
@@ -203,6 +500,196 @@ func TestScan_ConfigOverride_DisablesRule(t *testing.T) {
 	}
 }
 
+func TestScan_ExactConfigExecutesLocalCustomRule(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolving temporary scan root: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".bouncerfox.yml"), []byte("ignore:\n  - SKILL.md\n"), 0o600); err != nil {
+		t.Fatalf("writing conventional config: %v", err)
+	}
+	skill := []byte(`---
+name: local-custom-rule-test
+description: A documented skill used to verify local custom rule execution.
+---
+BOUNCERFOX_CUSTOM_SENTINEL
+`)
+	if err := os.WriteFile(filepath.Join(root, "SKILL.md"), skill, 0o600); err != nil {
+		t.Fatalf("writing governed file: %v", err)
+	}
+	configPath := filepath.Join(root, "strict-policy.yml")
+	customConfig := []byte(`custom_rules:
+  - id: CUSTOM_900
+    name: Detect local sentinel
+    severity: high
+    file_types: [skill_md]
+    match:
+      type: content_contains
+      value: BOUNCERFOX_CUSTOM_SENTINEL
+    remediation: Remove the sentinel
+`)
+	if err := os.WriteFile(configPath, customConfig, 0o600); err != nil {
+		t.Fatalf("writing exact custom config: %v", err)
+	}
+
+	stdout, stderr, code := runBinary(t, []string{"scan", root, "--config", configPath, "--format", "json"})
+	if code != 1 {
+		t.Fatalf("expected custom high-severity finding exit 1, got %d: %s", code, stderr)
+	}
+	var envelope struct {
+		Findings []struct {
+			RuleID string `json:"rule_id"`
+		} `json:"findings"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &envelope); err != nil {
+		t.Fatalf("decoding scan output: %v\n%s", err, stdout)
+	}
+	for _, finding := range envelope.Findings {
+		if finding.RuleID == "CUSTOM_900" {
+			return
+		}
+	}
+	t.Fatalf("CUSTOM_900 finding missing from output: %s", stdout)
+}
+
+func TestScan_InvalidLocalCustomRuleIsRejected(t *testing.T) {
+	root := t.TempDir()
+	skill := []byte(`---
+name: valid-custom-test
+description: A well-documented skill used to verify invalid custom rule diagnostics.
+---
+This skill contains enough explanatory prose to avoid unrelated quality findings during the validation regression test.
+`)
+	if err := os.WriteFile(filepath.Join(root, "SKILL.md"), skill, 0o600); err != nil {
+		t.Fatalf("writing governed file: %v", err)
+	}
+	configPath := filepath.Join(root, "invalid-custom.yml")
+	invalidConfig := []byte(`custom_rules:
+  - id: CUSTOM_901
+    name: Mistyped primitive
+    severity: high
+    file_types: [skill_md]
+    match:
+      type: content_contans
+      value: sentinel
+    remediation: Fix the primitive name
+`)
+	if err := os.WriteFile(configPath, invalidConfig, 0o600); err != nil {
+		t.Fatalf("writing invalid custom config: %v", err)
+	}
+
+	stdout, stderr, code := runBinary(t, []string{"scan", root, "--config", configPath, "--format", "json"})
+	if code != 0 {
+		t.Fatalf("invalid custom rule should be skipped with a clean local scan, got %d: %s\n%s", code, stderr, stdout)
+	}
+	if !strings.Contains(stderr, `unknown match type "content_contans"`) {
+		t.Errorf("stderr missing invalid custom-rule diagnostic: %s", stderr)
+	}
+}
+
+func TestScan_MissingLocalCustomMatchIsRejected(t *testing.T) {
+	root := t.TempDir()
+	skill := []byte(`---
+name: missing-custom-match-test
+description: A well-documented skill used to verify missing custom match diagnostics.
+---
+This skill contains enough explanatory prose to avoid unrelated quality findings during the validation regression test.
+`)
+	if err := os.WriteFile(filepath.Join(root, "SKILL.md"), skill, 0o600); err != nil {
+		t.Fatalf("writing governed file: %v", err)
+	}
+	configPath := filepath.Join(root, "missing-custom-match.yml")
+	missingMatchConfig := []byte(`custom_rules:
+  - id: CUSTOM_902
+    name: Missing match due to typo
+    severity: high
+    file_types: [skill_md]
+    macth:
+      type: content_contains
+      value: sentinel
+    remediation: Fix the match key
+`)
+	if err := os.WriteFile(configPath, missingMatchConfig, 0o600); err != nil {
+		t.Fatalf("writing invalid custom config: %v", err)
+	}
+
+	stdout, stderr, code := runBinary(t, []string{"scan", root, "--config", configPath, "--format", "json"})
+	if code != 0 {
+		t.Fatalf("missing custom match should be skipped with a clean local scan, got %d: %s\n%s", code, stderr, stdout)
+	}
+	if !strings.Contains(stderr, `"match" must not be empty`) {
+		t.Errorf("stderr missing empty custom-match diagnostic: %s", stderr)
+	}
+}
+
+func TestScan_DiscoversConfigFromScanRoot(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolving temporary scan root: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".bouncerfox.yml"), []byte("ignore:\n  - SKILL.md\n"), 0o600); err != nil {
+		t.Fatalf("writing project config: %v", err)
+	}
+	skillPath := filepath.Join(root, "SKILL.md")
+	unsafeSkill := []byte(`---
+name: unsafe-skill
+description: A documented skill containing a value the scanner would normally reject.
+---
+This skill exists to verify config discovery from the requested scan root.
+api_key: 0123456789abcdef0123456789abcdef
+`)
+	if err := os.WriteFile(skillPath, unsafeSkill, 0o600); err != nil {
+		t.Fatalf("writing governed file: %v", err)
+	}
+
+	for _, scanPath := range []string{root, skillPath} {
+		_, stderr, code := runBinary(t, []string{"scan", scanPath, "--format", "json"})
+		if code != 0 {
+			t.Errorf("scan %q: expected discovered ignore config to produce exit 0, got %d: %s", scanPath, code, stderr)
+		}
+	}
+}
+
+func TestScan_WarnsOnGenericParseRejections(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolving temporary scan root: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		path    string
+		content string
+		format  string
+	}{
+		{
+			name:    "malformed frontmatter",
+			path:    filepath.Join(root, "SKILL.md"),
+			content: "---\nname: [unterminated\n---\nBody\n",
+			format:  "YAML",
+		},
+		{
+			name:    "malformed JSON",
+			path:    filepath.Join(root, ".mcp.json"),
+			content: `{"mcpServers":`,
+			format:  "JSON",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := os.WriteFile(tt.path, []byte(tt.content), 0o600); err != nil {
+				t.Fatalf("writing malformed input: %v", err)
+			}
+			_, stderr, _ := runBinary(t, []string{"scan", tt.path})
+			want := fmt.Sprintf("warning: could not parse %s as %s at line 1", tt.path, tt.format)
+			if !strings.Contains(stderr, want) {
+				t.Errorf("stderr should contain %q, got %q", want, stderr)
+			}
+		})
+	}
+}
+
 func TestScan_RuleFloor_CannotDisableSEC001(t *testing.T) {
 	stdout, _, code := runBinary(t, []string{"scan", "testdata/floor-test", "--config", "testdata/floor-test/.bouncerfox.yml"})
 	if code != 1 {
@@ -210,6 +697,109 @@ func TestScan_RuleFloor_CannotDisableSEC001(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "SEC_001") {
 		t.Error("SEC_001 should fire despite config trying to disable it (rule floor)")
+	}
+}
+
+func TestScan_FileLimitProcesses500thFile(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolving temporary scan root: %v", err)
+	}
+	cleanSkill := []byte(`---
+name: clean-skill
+description: A well-documented skill that performs code review and analysis tasks.
+---
+This skill reviews code for common issues and suggests improvements.
+It follows established coding standards and best practices for the project.
+`)
+
+	for i := 1; i <= 500; i++ {
+		dir := filepath.Join(root, fmt.Sprintf("%04d", i))
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatalf("creating skill directory %d: %v", i, err)
+		}
+		content := cleanSkill
+		if i == 500 {
+			content = append(append([]byte(nil), cleanSkill...), []byte("api_key: 0123456789abcdef0123456789abcdef\n")...)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), content, 0o600); err != nil {
+			t.Fatalf("writing skill %d: %v", i, err)
+		}
+	}
+
+	type scanOutput struct {
+		Findings []struct {
+			Evidence struct {
+				File string `json:"file"`
+			} `json:"evidence"`
+		} `json:"findings"`
+	}
+	containsFindingFor := func(raw, suffix string) bool {
+		t.Helper()
+		var output scanOutput
+		if err := json.Unmarshal([]byte(raw), &output); err != nil {
+			t.Fatalf("decoding scan output: %v\n%s", err, raw)
+		}
+		for _, finding := range output.Findings {
+			if strings.HasSuffix(filepath.Clean(finding.Evidence.File), suffix) {
+				return true
+			}
+		}
+		return false
+	}
+
+	stdout, stderr, code := runBinary(t, []string{"scan", root, "--format", "json"})
+	if code != 1 {
+		t.Errorf("500-file scan: expected exit 1, got %d", code)
+	}
+	if !containsFindingFor(stdout, filepath.Join("0500", "SKILL.md")) {
+		t.Error("500-file scan should include a finding from the 500th file")
+	}
+	if strings.Contains(stderr, "file limit") {
+		t.Errorf("500 files should not trigger the file-limit warning: %s", stderr)
+	}
+
+	lastDir := filepath.Join(root, "0501")
+	if err := os.MkdirAll(lastDir, 0o700); err != nil {
+		t.Fatalf("creating 501st skill directory: %v", err)
+	}
+	lastContent := append(append([]byte(nil), cleanSkill...), []byte("api_key: fedcba9876543210fedcba9876543210\n")...)
+	if err := os.WriteFile(filepath.Join(lastDir, "SKILL.md"), lastContent, 0o600); err != nil {
+		t.Fatalf("writing 501st skill: %v", err)
+	}
+
+	stdout, stderr, code = runBinary(t, []string{"scan", root, "--format", "json"})
+	if code != 1 {
+		t.Errorf("501-file scan: expected exit 1, got %d", code)
+	}
+	if !containsFindingFor(stdout, filepath.Join("0500", "SKILL.md")) {
+		t.Error("501-file scan should still include a finding from the 500th file")
+	}
+	if containsFindingFor(stdout, filepath.Join("0501", "SKILL.md")) {
+		t.Error("501-file scan should not include the capped 501st file")
+	}
+	if !strings.Contains(stderr, "file limit (500) reached") {
+		t.Errorf("501 files should trigger the file-limit warning: %s", stderr)
+	}
+}
+
+func TestScan_OversizedFileReportsQA009(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "SKILL.md")
+	if err := os.WriteFile(path, bytes.Repeat([]byte("A"), 1024*1024+1), 0o600); err != nil {
+		t.Fatalf("writing oversized governed file: %v", err)
+	}
+
+	stdout, stderr, code := runBinary(t, []string{"scan", root, "--format", "json"})
+	if code != 1 {
+		t.Fatalf("oversized file should produce a high-severity finding, got %d: %s", code, stderr)
+	}
+	finding := findingForRule(t, decodeCLIJSONFindings(t, stdout), "QA_009")
+	if finding.Evidence.File != "SKILL.md" {
+		t.Errorf("evidence file = %q, want SKILL.md", finding.Evidence.File)
+	}
+	if !strings.Contains(stderr, "too large for content analysis") {
+		t.Errorf("stderr missing oversized-file diagnostic: %s", stderr)
 	}
 }
 

@@ -1,0 +1,4 @@
+{
+  "error": "scan_superseded",
+  "message": "A newer commit already exists for this scan target."
+}

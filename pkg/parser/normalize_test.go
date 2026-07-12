@@ -15,6 +15,10 @@ func TestNormalizeContent(t *testing.T) {
 		{"html entities", "&lt;script&gt;", "<script>"},
 		{"html numeric entities", "&#60;script&#62;", "<script>"},
 		{"combined", "ａｐｉ_key = &quot;secret&quot;", "api_key = \"secret\""},
+		{"crlf line endings", "first\r\nsecond\r\n", "first\nsecond\n"},
+		{"bare cr line endings", "first\rsecond\r", "first\nsecond\n"},
+		{"mixed line endings", "first\r\nsecond\rthird\n", "first\nsecond\nthird\n"},
+		{"html encoded line endings", "first&#13;&#10;second&#13;third", "first\nsecond\nthird"},
 		{"no change needed", "normal text", "normal text"},
 		{"empty string", "", ""},
 	}

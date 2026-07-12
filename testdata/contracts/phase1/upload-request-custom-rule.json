@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "cli_version": "0.9.0",
+  "target": "github:acme/repo",
+  "target_label": "acme/repo",
+  "commit_sha": "fedcba9876543210fedcba9876543210fedcba98",
+  "branch": "feature/custom-rules",
+  "trigger": "ci",
+  "timestamp": "2026-06-19T12:05:00Z",
+  "duration_ms": 275,
+  "total_files": 7,
+  "scanned_files": 2,
+  "profile": "recommended",
+  "config_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+  "findings": [
+    {
+      "rule_id": "CUSTOM_001",
+      "severity": "high",
+      "message": "Reject eval usage",
+      "file": ".claude/skills/unsafe/SKILL.md",
+      "line": 14,
+      "fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "remediation": "Remove eval from the skill implementation."
+    }
+  ]
+}

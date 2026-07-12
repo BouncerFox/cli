@@ -6,7 +6,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -39,7 +38,8 @@ type RuleConfig struct {
 	FileTypes []string `yaml:"file_types"`
 }
 
-// CustomRuleConfig holds a custom rule definition pulled from the platform.
+// CustomRuleConfig is the normalized representation of a custom rule from
+// either local YAML or the platform response.
 type CustomRuleConfig struct {
 	RuleID      string         `yaml:"rule_id"`
 	Name        string         `yaml:"name"`
@@ -67,7 +67,7 @@ type Config struct {
 	// Target pins the repository identity for connected mode (e.g. "github:org/repo").
 	Target string `yaml:"target"`
 
-	// CustomRules holds custom rule definitions from the platform.
+	// CustomRules holds custom rule definitions from local or platform config.
 	CustomRules []CustomRuleConfig `yaml:"-"`
 
 	// NoFloor disables the minimum rule floor (set via CLI flag, not YAML).
@@ -108,22 +108,10 @@ func knownRuleIDs() map[string]bool {
 	return m
 }
 
-// defaultSeverityForRule returns the default severity of a rule by ID, or ""
-// if the rule is not found.
-func defaultSeverityForRule(id string) document.FindingSeverity {
-	for i := range rules.Registry {
-		if rules.Registry[i].ID == id {
-			return rules.Registry[i].DefaultSeverity
-		}
-	}
-	return ""
-}
-
-// clampSeverity enforces the constraint that CRITICAL rules cannot be
+// clampSeverity enforces the constraint that floor-protected rules cannot be
 // downgraded below HIGH.
 func clampSeverity(ruleID string, sv document.FindingSeverity) document.FindingSeverity {
-	defaultSev := defaultSeverityForRule(ruleID)
-	if defaultSev == document.SeverityCritical && sv.Level() < document.SeverityHigh.Level() {
+	if floorRules[ruleID] && sv.Level() < document.SeverityHigh.Level() {
 		return document.SeverityHigh
 	}
 	return sv
@@ -132,12 +120,13 @@ func clampSeverity(ruleID string, sv document.FindingSeverity) document.FindingS
 // rawConfig is an intermediate struct used during YAML parsing so we can
 // validate string-typed severity fields before converting them.
 type rawConfig struct {
-	Profile        string                   `yaml:"profile"`
-	SeverityFloor  string                   `yaml:"severity_floor"`
-	Rules          map[string]rawRuleConfig `yaml:"rules"`
-	Ignore         []string                 `yaml:"ignore"`
-	Target         string                   `yaml:"target"`
-	PlatformPolicy map[string]any           `yaml:"platform_policy"` // parsed and silently discarded
+	Profile        string                     `yaml:"profile"`
+	SeverityFloor  string                     `yaml:"severity_floor"`
+	Rules          map[string]rawRuleConfig   `yaml:"rules"`
+	Ignore         []string                   `yaml:"ignore"`
+	Target         string                     `yaml:"target"`
+	CustomRules    []rawLocalCustomRuleConfig `yaml:"custom_rules"`
+	PlatformPolicy map[string]any             `yaml:"platform_policy"` // parsed and silently discarded
 }
 
 type rawRuleConfig struct {
@@ -147,16 +136,31 @@ type rawRuleConfig struct {
 	FileTypes []string       `yaml:"file_types"`
 }
 
-// parseRawConfig converts a rawConfig into a validated Config.
-func parseRawConfig(raw rawConfig) (*Config, error) {
+// rawLocalCustomRuleConfig matches the public .bouncerfox.yml custom-rule
+// schema. Platform responses use different field names and are parsed by
+// ParsePlatformConfig.
+type rawLocalCustomRuleConfig struct {
+	ID          string         `yaml:"id"`
+	Name        string         `yaml:"name"`
+	Severity    string         `yaml:"severity"`
+	Remediation string         `yaml:"remediation"`
+	Match       map[string]any `yaml:"match"`
+	FileTypes   []string       `yaml:"file_types"`
+}
+
+// parseRawConfig converts a rawConfig into a validated Config. Standalone
+// loads apply the recommended profile default immediately; layered project
+// loads preserve an omitted profile until after the global merge.
+func parseRawConfig(raw rawConfig, applyProfileDefault bool) (*Config, error) {
 	cfg := &Config{
-		Profile: raw.Profile,
-		Ignore:  raw.Ignore,
-		Target:  raw.Target,
-		Rules:   make(map[string]RuleConfig, len(raw.Rules)),
+		Profile:     raw.Profile,
+		Ignore:      raw.Ignore,
+		Target:      raw.Target,
+		Rules:       make(map[string]RuleConfig, len(raw.Rules)),
+		CustomRules: make([]CustomRuleConfig, 0, len(raw.CustomRules)),
 	}
 
-	if cfg.Profile == "" {
+	if applyProfileDefault && cfg.Profile == "" {
 		cfg.Profile = ProfileRecommended
 	}
 
@@ -195,11 +199,22 @@ func parseRawConfig(raw rawConfig) (*Config, error) {
 		}
 	}
 
+	for _, rule := range raw.CustomRules {
+		cfg.CustomRules = append(cfg.CustomRules, CustomRuleConfig{
+			RuleID:      rule.ID,
+			Name:        rule.Name,
+			Severity:    rule.Severity,
+			Description: rule.Remediation,
+			MatchConfig: rule.Match,
+			FileTypes:   rule.FileTypes,
+		})
+	}
+
 	return cfg, nil
 }
 
 // LoadProjectConfig loads config from dir only, with no global merge.
-// Used when --config is explicitly provided, and by tests for hermeticity.
+// It discovers only the conventional .bouncerfox.yml/.yaml filenames.
 func LoadProjectConfig(dir string) (*Config, error) {
 	data, err := readConfigFile(dir)
 	if err != nil {
@@ -207,6 +222,29 @@ func LoadProjectConfig(dir string) (*Config, error) {
 	}
 	if data == nil {
 		return DefaultConfig(), nil
+	}
+	return ParseConfigBytes(data)
+}
+
+// loadProjectConfigLayer discovers a project config while preserving omitted
+// scalar values so they do not overwrite explicitly configured global values.
+func loadProjectConfigLayer(dir string) (*Config, error) {
+	data, err := readConfigFile(dir)
+	if err != nil {
+		return nil, err
+	}
+	if data == nil {
+		return nil, nil
+	}
+	return parseConfigBytes(data, false)
+}
+
+// LoadConfigFile loads exactly path, without conventional-name discovery or a
+// global-config merge. It is used for an explicit --config path.
+func LoadConfigFile(path string) (*Config, error) {
+	data, err := os.ReadFile(path) //nolint:gosec // G304: explicit user-provided config path
+	if err != nil {
+		return nil, fmt.Errorf("config: read %s: %w", path, err)
 	}
 	return ParseConfigBytes(data)
 }
@@ -231,7 +269,7 @@ func loadGlobalConfig() *Config {
 // If global config is missing or malformed, only project config is used.
 func LoadConfig(dir string) (*Config, error) {
 	global := loadGlobalConfig()
-	project, err := LoadProjectConfig(dir)
+	project, err := loadProjectConfigLayer(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -239,17 +277,27 @@ func LoadConfig(dir string) (*Config, error) {
 }
 
 // MergeConfigs merges global (base) and project (overlay) configs.
-// Scalars: project wins if non-zero. Lists: union (deduplicated by exact string).
-// Rules: deep merge at rule ID level; params replaced wholesale.
+// Scalars: project wins if non-zero. Ignore lists are unioned. Built-in rules
+// are deep-merged by ID, while project custom rules replace matching global IDs.
 func MergeConfigs(global, project *Config) *Config {
 	if global == nil && project == nil {
 		return DefaultConfig()
 	}
 	if global == nil {
-		return project
+		if project.Profile != "" {
+			return project
+		}
+		merged := *project
+		merged.Profile = ProfileRecommended
+		return &merged
 	}
 	if project == nil {
-		return global
+		if global.Profile != "" {
+			return global
+		}
+		merged := *global
+		merged.Profile = ProfileRecommended
+		return &merged
 	}
 
 	merged := &Config{
@@ -258,6 +306,7 @@ func MergeConfigs(global, project *Config) *Config {
 		Target:        global.Target,
 		Ignore:        unionStrings(global.Ignore, project.Ignore),
 		Rules:         make(map[string]RuleConfig),
+		CustomRules:   mergeCustomRules(global.CustomRules, project.CustomRules),
 	}
 
 	if project.Profile != "" {
@@ -322,15 +371,37 @@ func unionStrings(a, b []string) []string {
 	return result
 }
 
-// ParseConfigBytes parses a .bouncerfox.yml config from raw bytes.
-// It applies the same validation as LoadConfig. This is used when consuming
-// a platform-merged config pulled from the API.
+// mergeCustomRules preserves base ordering, replaces matching IDs with project
+// definitions, and appends project-only definitions.
+func mergeCustomRules(global, project []CustomRuleConfig) []CustomRuleConfig {
+	merged := append([]CustomRuleConfig(nil), global...)
+	indexes := make(map[string]int, len(merged))
+	for i, rule := range merged {
+		indexes[rule.RuleID] = i
+	}
+	for _, rule := range project {
+		if i, ok := indexes[rule.RuleID]; ok {
+			merged[i] = rule
+			continue
+		}
+		indexes[rule.RuleID] = len(merged)
+		merged = append(merged, rule)
+	}
+	return merged
+}
+
+// ParseConfigBytes parses a standalone .bouncerfox.yml config from raw bytes.
+// An omitted profile receives the recommended default.
 func ParseConfigBytes(data []byte) (*Config, error) {
+	return parseConfigBytes(data, true)
+}
+
+func parseConfigBytes(data []byte, applyProfileDefault bool) (*Config, error) {
 	var raw rawConfig
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("config: YAML parse error: %w", err)
 	}
-	return parseRawConfig(raw)
+	return parseRawConfig(raw, applyProfileDefault)
 }
 
 // readConfigFile looks for .bouncerfox.yml then .bouncerfox.yaml in dir.
@@ -449,7 +520,7 @@ func (c *Config) ToScanOptions() engine.ScanOptions {
 	if !c.NoFloor {
 		var filtered []string
 		for _, d := range disabled {
-			if strings.HasPrefix(d, "SEC_") {
+			if floorRules[d] {
 				fmt.Fprintf(os.Stderr, "warning: cannot disable floor-protected rule %s via config\n", d)
 				continue
 			}
